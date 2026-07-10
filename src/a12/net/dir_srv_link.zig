@@ -187,7 +187,7 @@ fn requestResource(ns: c_int, res: [*:0]const u8, mode: c_int) c_int {
 
     const status = c.dir_request_resource(
         @ptrCast(&G.shmif_parent_process),
-        @bitCast(@as(c_ulong, @intCast(@as(c_uint, @bitCast(ns))))),
+        @bitCast(@as(usize, @intCast(@as(c_uint, @bitCast(ns))))),
         res,
         mode,
         rep,

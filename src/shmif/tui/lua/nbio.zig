@@ -313,7 +313,7 @@ pub export fn alt_nbio_process_read(L: ?*lua_State, ib: [*c]struct_nonblock_io, 
         lua_getfield(L, -1, "read_cap");
         var count: usize = @intFromFloat(lua_tonumber(L, -1));
         if (!(count != 0)) {
-            count = @as(usize, @bitCast(@as(c_long, -1)));
+            count = @as(usize, @bitCast(@as(isize, -1)));
         }
         lua_settop(L, -1 - 1);
         while ((blk: {
@@ -404,8 +404,8 @@ pub export fn alt_nbio_open(L: ?*lua_State) c_int {
     conn.*.mode = @as(mode_t, @bitCast(pfd.wrmode));
     conn.*.pending = pfd.path;
     conn.*.unlink_fn = pfd.unlink;
-    conn.*.data_handler = @as(isize, @bitCast(@as(c_long, -2)));
-    conn.*.write_handler = @as(isize, @bitCast(@as(c_long, -2)));
+    conn.*.data_handler = @as(isize, @bitCast(@as(isize, -2)));
+    conn.*.write_handler = @as(isize, @bitCast(@as(isize, -2)));
     const dp: [*c]usize = @ptrCast(@alignCast(lua_newuserdata(L, @sizeOf(usize))));
     dp.* = @intFromPtr(conn);
     _ = lua_getfield(L, -1001000, pfd.metatable);
@@ -506,7 +506,7 @@ pub export fn alt_nbio_data_in(L: ?*lua_State, tag_arg: isize) void {
     alt_call(L, 0, 0, 1, 1, "1400:data_handler_cb");
     if (ib.*.data_rearmed) {} else if ((lua_type(L, -1) == 1) and (lua_toboolean(L, -1) != 0)) {} else {
         unref_registry(L, ch, 6, "data-in-dontwant");
-        ib.*.data_handler = @as(isize, @bitCast(@as(c_long, -2)));
+        ib.*.data_handler = @as(isize, @bitCast(@as(isize, -2)));
         if (remove_job.?(ib.*.fd, @as(mode_t, @bitCast(@as(c_int, 0))), &tag)) {
             unref_registry(L, tag, 7, "data-in-meta-dontwant");
         }
@@ -523,7 +523,7 @@ pub export fn alt_nbio_data_out(L: ?*lua_State, tag_arg: isize) void {
     if (!(ib.*.out_queue != null)) return;
     const status: c_int = alt_nbio_process_write(L, ib);
     if (status == 0) return;
-    if (ib.*.write_handler == @as(isize, @bitCast(@as(c_long, -2)))) {
+    if (ib.*.write_handler == @as(isize, @bitCast(@as(isize, -2)))) {
         drop_all_jobs(ib);
         return;
     }
@@ -551,8 +551,8 @@ pub export fn alt_nbio_release() void {
             }
             drop_all_jobs(ent);
             open_fds[i] = std.mem.zeroes(struct_nonblock_io);
-            open_fds[i].data_handler = @as(isize, @bitCast(@as(c_long, -2)));
-            open_fds[i].write_handler = @as(isize, @bitCast(@as(c_long, -2)));
+            open_fds[i].data_handler = @as(isize, @bitCast(@as(isize, -2)));
+            open_fds[i].write_handler = @as(isize, @bitCast(@as(isize, -2)));
         }
     }
 }
@@ -584,8 +584,8 @@ pub export fn alt_nbio_import(L: ?*lua_State, fd: c_int, mode: mode_t, out: [*c]
     nbio.*.fd = fd;
     nbio.*.mode = mode;
     nbio.*.unlink_fn = if (unlink_fn != null) unlink_fn.* else null;
-    nbio.*.data_handler = @as(isize, @bitCast(@as(c_long, -2)));
-    nbio.*.write_handler = @as(isize, @bitCast(@as(c_long, -2)));
+    nbio.*.data_handler = @as(isize, @bitCast(@as(isize, -2)));
+    nbio.*.write_handler = @as(isize, @bitCast(@as(isize, -2)));
     if (out != null) {
         out.* = nbio;
     }
@@ -607,13 +607,13 @@ pub export fn alt_nbio_close(L: ?*lua_State, ibb: [*c][*c]struct_nonblock_io) c_
     }
     free(@as(?*anyopaque, @ptrCast(ib.*.pending)));
     drop_all_jobs(ib);
-    if (ib.*.data_handler != @as(isize, @bitCast(@as(c_long, -2)))) {
+    if (ib.*.data_handler != @as(isize, @bitCast(@as(isize, -2)))) {
         unref_registry(L, ib.*.data_handler, 6, "nbio_close_dh");
-        ib.*.data_handler = @as(isize, @bitCast(@as(c_long, -2)));
+        ib.*.data_handler = @as(isize, @bitCast(@as(isize, -2)));
     }
-    if (ib.*.write_handler != @as(isize, @bitCast(@as(c_long, -2)))) {
+    if (ib.*.write_handler != @as(isize, @bitCast(@as(isize, -2)))) {
         unref_registry(L, ib.*.write_handler, 6, "nbio_close_wh");
-        ib.*.write_handler = @as(isize, @bitCast(@as(c_long, -2)));
+        ib.*.write_handler = @as(isize, @bitCast(@as(isize, -2)));
     }
     var tag: isize = undefined;
     if (remove_job.?(fd, @as(mode_t, @bitCast(@as(c_int, 0))), &tag)) {
@@ -629,8 +629,8 @@ pub export fn alt_nbio_close(L: ?*lua_State, ibb: [*c][*c]struct_nonblock_io) c_
         while (i < 64) : (i +%= 1) {
             if (open_fds[i].fd == fd) {
                 open_fds[i] = std.mem.zeroes(struct_nonblock_io);
-                open_fds[i].data_handler = @as(isize, @bitCast(@as(c_long, -2)));
-                open_fds[i].write_handler = @as(isize, @bitCast(@as(c_long, -2)));
+                open_fds[i].data_handler = @as(isize, @bitCast(@as(isize, -2)));
+                open_fds[i].write_handler = @as(isize, @bitCast(@as(isize, -2)));
                 break;
             }
         }
@@ -680,7 +680,7 @@ pub fn ensure_flush(L: ?*lua_State, ib: [*c]struct_nonblock_io, timeout_arg: usi
         if (timeout > 0) {
             const now: c_ulonglong = arcan_timemillis();
             if (now > current) {
-                timeout -%= @as(usize, @bitCast(@as(c_ulong, @truncate(now -% current))));
+                timeout -%= @as(usize, @bitCast(@as(usize, @truncate(now -% current))));
             }
             current = now;
             if (timeout <= 0) {
@@ -782,9 +782,9 @@ pub fn nbio_datahandler(L: ?*lua_State) callconv(.c) c_int {
     if (!(ib.* != null)) {
         return 0;
     }
-    if (ib.*.*.data_handler != @as(isize, @bitCast(@as(c_long, -2)))) {
+    if (ib.*.*.data_handler != @as(isize, @bitCast(@as(isize, -2)))) {
         unref_registry(L, ib.*.*.data_handler, 6, "nbio-dh-reset");
-        ib.*.*.data_handler = @as(isize, @bitCast(@as(c_long, -2)));
+        ib.*.*.data_handler = @as(isize, @bitCast(@as(isize, -2)));
     }
     ib.*.*.data_rearmed = true;
     var out: isize = undefined;
@@ -792,9 +792,9 @@ pub fn nbio_datahandler(L: ?*lua_State) callconv(.c) c_int {
         unref_registry(L, out, 7, "nbio-rdonly-meta-reset");
     }
     if (lua_type(L, 2) == 6) {
-        var ref: isize = @as(isize, @bitCast(@as(c_long, luaL_ref(L, -1001000))));
+        var ref: isize = @as(isize, @bitCast(@as(isize, luaL_ref(L, -1001000))));
         ib.*.*.data_handler = ref;
-        ref = @as(isize, @bitCast(@as(c_long, luaL_ref(L, -1001000))));
+        ref = @as(isize, @bitCast(@as(isize, luaL_ref(L, -1001000))));
         lua_pushvalue(L, 1);
         lua_pushvalue(L, 1);
         if (!add_job.?(ib.*.*.fd, @as(mode_t, @bitCast(@as(c_int, 0))), ref)) {
@@ -849,8 +849,8 @@ pub fn nbio_socketaccept(L: ?*lua_State) callconv(.c) c_int {
     conn.*.lfch = '\n';
     conn.*.fd = newfd;
     conn.*.mode = @as(mode_t, @bitCast(@as(c_int, 2)));
-    conn.*.data_handler = @as(isize, @bitCast(@as(c_long, -2)));
-    conn.*.write_handler = @as(isize, @bitCast(@as(c_long, -2)));
+    conn.*.data_handler = @as(isize, @bitCast(@as(isize, -2)));
+    conn.*.write_handler = @as(isize, @bitCast(@as(isize, -2)));
     if (!(conn != null)) {
         _ = close(newfd);
         return 0;
@@ -918,12 +918,12 @@ pub fn nbio_write(L: ?*lua_State) callconv(.c) c_int {
         }
     }
     if (lua_type(L, 3) == 6) {
-        if (iw.*.write_handler != @as(isize, @bitCast(@as(c_long, -2)))) {
+        if (iw.*.write_handler != @as(isize, @bitCast(@as(isize, -2)))) {
             unref_registry(L, iw.*.write_handler, 6, "nbio-write-cb-chg");
-            iw.*.write_handler = @as(isize, @bitCast(@as(c_long, -2)));
+            iw.*.write_handler = @as(isize, @bitCast(@as(isize, -2)));
         }
         lua_pushvalue(L, 3);
-        iw.*.write_handler = @as(isize, @bitCast(@as(c_long, luaL_ref(L, -1001000))));
+        iw.*.write_handler = @as(isize, @bitCast(@as(isize, luaL_ref(L, -1001000))));
     }
     if (!(len != 0)) {
         lua_getfield(L, 2, "suffix");
@@ -936,7 +936,7 @@ pub fn nbio_write(L: ?*lua_State) callconv(.c) c_int {
         const count: c_int = @as(c_int, @bitCast(@as(c_uint, @truncate(lua_objlen(L, 2)))));
         {
             var i: isize = 0;
-            while (i < @as(isize, @bitCast(@as(c_long, count)))) : (i += 1) {
+            while (i < @as(isize, @bitCast(@as(isize, count)))) : (i += 1) {
                 lua_rawgeti(L, 2, @as(c_int, @truncate(i + 1)));
                 buf = lua_tolstring(L, -1, &len);
                 if (!(len != 0)) {
@@ -970,7 +970,7 @@ pub fn nbio_write(L: ?*lua_State) callconv(.c) c_int {
         unref_registry(L, ref, 7, "nbio-wrmeta-chg");
     }
     lua_pushvalue(L, 1);
-    ref = @as(isize, @bitCast(@as(c_long, luaL_ref(L, -1001000))));
+    ref = @as(isize, @bitCast(@as(isize, luaL_ref(L, -1001000))));
     _ = add_job.?(iw.*.fd, @as(mode_t, @bitCast(@as(c_int, 1))), ref);
     lua_pushnumber(L, @as(lua_Number, @floatFromInt(len)));
     lua_pushboolean(L, 1);
@@ -991,7 +991,7 @@ pub fn nextline(ib: [*c]struct_nonblock_io, start: usize, eof: bool, nb: [*c]usi
             }
         }
     }
-    if ((@as(c_int, @intFromBool(eof)) != 0) or (!(start != 0) and (@as(c_ulong, @bitCast(ib.*.ofs)) == @sizeOf([4096]u8) / @sizeOf(u8)))) {
+    if ((@as(c_int, @intFromBool(eof)) != 0) or (!(start != 0) and (@as(usize, @bitCast(ib.*.ofs)) == @sizeOf([4096]u8) / @sizeOf(u8)))) {
         gotline.* = false;
         if (@as(usize, @bitCast(ib.*.ofs)) < start) {
             nb.* = 0;
@@ -1230,7 +1230,7 @@ pub fn nbio_seek(L: ?*lua_State) callconv(.c) c_int {
             pos = lseek(ib.*.fd, @as(off_t, @intFromFloat(ofs)), 1);
         }
     }
-    lua_pushboolean(L, @intFromBool(pos != @as(off_t, @bitCast(@as(c_long, -1)))));
+    lua_pushboolean(L, @intFromBool(pos != @as(off_t, @bitCast(@as(isize, -1)))));
     lua_pushnumber(L, @as(lua_Number, @floatFromInt(pos)));
     return 2;
 }
@@ -1258,7 +1258,7 @@ pub fn nbio_flush(L: ?*lua_State) callconv(.c) c_int {
     const ibb: [*c][*c]struct_nonblock_io = @ptrCast(@alignCast(luaL_checkudata(L, 1, "nonblockIO")));
     const ib: [*c]struct_nonblock_io = ibb.*;
     lua_settop(L, -1 - 1);
-    if (((ib.*.write_handler != @as(isize, @bitCast(@as(c_long, -2)))) or !(ib.*.out_queue != null)) or (ib.*.fd == -1)) {
+    if (((ib.*.write_handler != @as(isize, @bitCast(@as(isize, -2)))) or !(ib.*.out_queue != null)) or (ib.*.fd == -1)) {
         lua_pushboolean(L, 0);
         return 1;
     }

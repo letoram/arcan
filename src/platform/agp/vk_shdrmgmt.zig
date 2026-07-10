@@ -283,18 +283,36 @@ fn resolveShadercSymbols(handle: ?*anyopaque) bool {
     return true;
 }
 
+// libshaderc leaf names differ per OS (Linux .so.N, macOS .dylib w/ common
+// install prefixes, Windows .dll). Try each in order — the first that opens
+// wins. Mirrors the vulkan loader candidate list in vk.zig.
+const shaderc_names: []const [*:0]const u8 = switch (builtin.os.tag) {
+    .macos, .ios, .watchos, .tvos => &.{
+        "libshaderc_shared.1.dylib",
+        "libshaderc_shared.dylib",
+        "/opt/homebrew/lib/libshaderc_shared.1.dylib",
+        "/usr/local/lib/libshaderc_shared.1.dylib",
+    },
+    .windows => &.{"shaderc_shared.dll"},
+    else => &.{"libshaderc_shared.so.1"},
+};
+
 fn loadShadercViaDlopen() bool {
     // With per-call TLS switching, zig_dlopen/zig_dlsym work anytime.
-    const handle = zig_dl.zig_dlopen("libshaderc_shared.so.1", 1) orelse {
-        std.debug.print("[vk_shdrmgmt] failed to zig_dlopen libshaderc_shared.so.1\n", .{});
+    const handle = for (shaderc_names) |nm| {
+        if (zig_dl.zig_dlopen(nm, 1)) |h| break h;
+    } else {
+        std.debug.print("[vk_shdrmgmt] failed to zig_dlopen libshaderc ({s} ...)\n", .{shaderc_names[0]});
         return false;
     };
     return resolveShadercSymbols(handle);
 }
 
 fn loadShadercViaStd() bool {
-    var lib = std.DynLib.open("libshaderc_shared.so.1") catch {
-        std.debug.print("[vk_shdrmgmt] failed to dlopen libshaderc_shared.so.1\n", .{});
+    var lib = for (shaderc_names) |nm| {
+        if (std.DynLib.open(std.mem.span(nm))) |l| break l else |_| {}
+    } else {
+        std.debug.print("[vk_shdrmgmt] failed to dlopen libshaderc ({s} ...)\n", .{shaderc_names[0]});
         return false;
     };
 

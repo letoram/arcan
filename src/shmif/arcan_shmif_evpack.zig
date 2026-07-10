@@ -133,7 +133,7 @@ fn fmtExternal(ev: *Event, work: [*c]u8, sz: usize) void {
             "i-alias: %d, i-type: %d)", arr(&lh.label), @as(c_int, lh.initial), arr(&lh.descr), @as(c_int, lh.subv), @as(c_int, lh.idatatype));
     } else if (kind == c.EVENT_EXTERNAL_REGISTER) {
         const rg = &ext.unnamed_0.registr;
-        _ = snprintf(work, sz, "EXT:REGISTER(title: %.64s, kind: %d, %lx:%lx)", arr(&rg.title), @as(c_int, @bitCast(rg.kind)), @as(c_ulong, rg.guid[0]), @as(c_ulong, rg.guid[1]));
+        _ = snprintf(work, sz, "EXT:REGISTER(title: %.64s, kind: %d, %lx:%lx)", arr(&rg.title), @as(c_int, @bitCast(rg.kind)), @as(c_ulonglong, rg.guid[0]), @as(c_ulonglong, rg.guid[1]));
     } else if (kind == c.EVENT_EXTERNAL_ALERT) {
         _ = snprintf(work, sz, "EXT:ALERT(%s):%d", arr(&ext.unnamed_0.message.data), @as(c_int, ext.unnamed_0.message.multipart));
     } else if (kind == c.EVENT_EXTERNAL_CLOCKREQ) {
@@ -141,7 +141,7 @@ fn fmtExternal(ev: *Event, work: [*c]u8, sz: usize) void {
         _ = snprintf(work, sz, "EXT:CLOCKREQ(rate: %u, id: %u, dynamic: %u, once: %u)", ck.rate, ck.id, @as(c_uint, ck.dynamic), @as(c_uint, ck.once));
     } else if (kind == c.EVENT_EXTERNAL_BCHUNKSTATE) {
         const bc = &ext.unnamed_0.bchunk;
-        _ = snprintf(work, sz, "EXT:BCHUNKSTATE(size: %lu, hint: %u, input: %u, stream: %u id: %u ext: %.68s)", @as(c_ulong, bc.unnamed_0.size), @as(c_uint, bc.hint), @as(c_uint, bc.input), @as(c_uint, bc.stream), bc.identifier, arr(&bc.extensions));
+        _ = snprintf(work, sz, "EXT:BCHUNKSTATE(size: %lu, hint: %u, input: %u, stream: %u id: %u ext: %.68s)", @as(c_ulonglong, bc.unnamed_0.size), @as(c_uint, bc.hint), @as(c_uint, bc.input), @as(c_uint, bc.stream), bc.identifier, arr(&bc.extensions));
     } else if (kind == c.EVENT_EXTERNAL_STREAMSTATUS) {
         const ss = &ext.unnamed_0.streamstat;
         _ = snprintf(work, sz, "EXT:STREAMSTATUS(#%u %.9s / %.9s, comp: %f, " ++
@@ -164,7 +164,7 @@ fn fmtViewport(ext: anytype, work: [*c]u8, sz: usize) void {
         "id: %u parent: %u " ++
         "@x,y+w,h: +%d,%d+%u,%u" ++
         ", border: %d,%d,%d,%d embed: %d focus: %d, invisible: %d, " ++
-        "anchor-edge: %d, anchor-pos: %d, edge: %d, z: %d)", @as(c_ulong, ext.frame_id), vp.ext_id, vp.parent, @as(c_int, vp.x), @as(c_int, vp.y), @as(c_uint, @as(u16, @truncate(vp.w))), @as(c_uint, @as(u16, @truncate(vp.h))), @as(c_int, vp.border[0]), @as(c_int, vp.border[1]), @as(c_int, vp.border[2]), @as(c_int, vp.border[3]), @as(c_int, vp.embedded), @as(c_int, vp.focus), @as(c_int, vp.invisible), @as(c_int, vp.anchor_edge), @as(c_int, vp.anchor_pos), @as(c_int, vp.edge), @as(c_int, vp.order));
+        "anchor-edge: %d, anchor-pos: %d, edge: %d, z: %d)", @as(c_ulonglong, ext.frame_id), vp.ext_id, vp.parent, @as(c_int, vp.x), @as(c_int, vp.y), @as(c_uint, @as(u16, @truncate(vp.w))), @as(c_uint, @as(u16, @truncate(vp.h))), @as(c_int, vp.border[0]), @as(c_int, vp.border[1]), @as(c_int, vp.border[2]), @as(c_int, vp.border[3]), @as(c_int, vp.embedded), @as(c_int, vp.focus), @as(c_int, vp.invisible), @as(c_int, vp.anchor_edge), @as(c_int, vp.anchor_pos), @as(c_int, vp.edge), @as(c_int, vp.order));
 }
 
 // eventstr: TARGET events
@@ -186,10 +186,10 @@ fn fmtTarget(ev: *Event, work: [*c]u8, sz: usize) void {
     } else if (kind == c.TARGET_COMMAND_RESTORE) {
         _ = snprintf(work, sz, "TGT:RESTORE(fd)");
     } else if (kind == c.TARGET_COMMAND_BCHUNK_IN) {
-        const bsz = @as(c_ulong, @as(u64, @bitCast(@as(i64, tgt.ioevs[1].iv)))) | (@as(c_ulong, @as(u64, @bitCast(@as(i64, tgt.ioevs[2].iv)))) << 32);
+        const bsz = @as(c_ulonglong, @as(u64, @bitCast(@as(i64, tgt.ioevs[1].iv)))) | (@as(c_ulonglong, @as(u64, @bitCast(@as(i64, tgt.ioevs[2].iv)))) << 32);
         _ = snprintf(work, sz, "TGT:BCHUNK-IN(%lub:msg=%s)", bsz, arr(&tgt.unnamed_0.message));
     } else if (kind == c.TARGET_COMMAND_BCHUNK_OUT) {
-        const bsz = @as(c_ulong, @as(u64, @bitCast(@as(i64, tgt.ioevs[1].iv)))) | (@as(c_ulong, @as(u64, @bitCast(@as(i64, tgt.ioevs[2].iv)))) << 32);
+        const bsz = @as(c_ulonglong, @as(u64, @bitCast(@as(i64, tgt.ioevs[1].iv)))) | (@as(c_ulonglong, @as(u64, @bitCast(@as(i64, tgt.ioevs[2].iv)))) << 32);
         _ = snprintf(work, sz, "TGT:BCHUNK-OUT(%lub:msg=%s)", bsz, arr(&tgt.unnamed_0.message));
     } else if (kind == c.TARGET_COMMAND_RESET) {
         const rst: [*c]const u8 = if (tgt.ioevs[0].iv == 0)

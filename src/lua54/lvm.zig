@@ -18,7 +18,7 @@ pub const wchar_t = c_uint;
 pub const char16_t = c_ushort;
 pub const char32_t = c_uint;
 pub const errno_t = c_int;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const wint_t = c_uint;
 pub const bool32 = c_int;
 pub const intmax_t = c_long;
@@ -64,12 +64,12 @@ pub const struct_winsize = extern struct {
 // C library functions referenced by Lua VM code or helper inlines
 // -------------------------------------------------------------------------
 pub extern fn abort() noreturn;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memcpy(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
+pub extern fn memcpy(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
 pub extern fn strlen([*c]const u8) c_ulong;
 pub extern fn strcoll([*c]const u8, [*c]const u8) c_int;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn longjmp([*c]c_long, c_int) noreturn;
 pub extern fn setjmp([*c]c_long) c_int;
 
@@ -578,8 +578,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -611,8 +611,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -1389,7 +1389,7 @@ pub export fn luaV_finishset(arg_L: [*c]lua_State, arg_t: [*c]const TValue, arg_
                 }
             } else {
                 tm = luaT_gettmbyobj(L, t, @as(c_uint, @bitCast(TM_NEWINDEX)));
-                if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((@as(c_int, @bitCast(@as(c_uint, tm.*.tt_))) & @as(c_int, 15)) == @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+                if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((@as(c_int, @bitCast(@as(c_uint, tm.*.tt_))) & @as(c_int, 15)) == @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
                     luaG_typeerror(L, t, "index");
                 }
             }
@@ -1550,7 +1550,7 @@ pub export fn luaV_finishOp(arg_L: [*c]lua_State) void {
                     _ = &top;
                     var a: c_int = @as(c_int, @bitCast((inst >> @intCast(@as(c_int, 0) + @as(c_int, 7))) & (~(~@as(Instruction, @bitCast(@as(c_int, 0))) << @intCast(@as(c_int, 8))) << @intCast(@as(c_int, 0)))));
                     _ = &a;
-                    var total: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(top - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))) -% @intFromPtr(base + @as(usize, @bitCast(@as(isize, @intCast(a))))))), @sizeOf(StackValue))))));
+                    var total: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(top - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))) -% @intFromPtr(base + @as(usize, @bitCast(@as(isize, @intCast(a))))))), @sizeOf(StackValue))))));
                     _ = &total;
                     {
                         var io1: [*c]TValue = &(top - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2)))))).*.val;
@@ -1668,7 +1668,7 @@ pub export fn luaV_concat(L: [*c]lua_State, arg_total: c_int) void {
                     _ = @as(c_int, 0);
                     break :blk_1 &@as([*c]union_GCUnion, @ptrCast(@alignCast((&(top - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))).*.val).*.value_.gc))).*.ts;
                 };
-            }).*.tt))) == (@as(c_int, 4) | (@as(c_int, 0) << @intCast(4)))) @as(usize, @bitCast(@as(c_ulong, (blk: {
+            }).*.tt))) == (@as(c_int, 4) | (@as(c_int, 0) << @intCast(4)))) @as(usize, @bitCast(@as(usize, (blk: {
                 _ = @as(c_int, 0);
                 break :blk blk_1: {
                     _ = @as(c_int, 0);
@@ -1696,7 +1696,7 @@ pub export fn luaV_concat(L: [*c]lua_State, arg_total: c_int) void {
                             _ = @as(c_int, 0);
                             break :blk_1 &@as([*c]union_GCUnion, @ptrCast(@alignCast((&((top - @as(usize, @bitCast(@as(isize, @intCast(n))))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))).*.val).*.value_.gc))).*.ts;
                         };
-                    }).*.tt))) == (@as(c_int, 4) | (@as(c_int, 0) << @intCast(4)))) @as(usize, @bitCast(@as(c_ulong, (blk: {
+                    }).*.tt))) == (@as(c_int, 4) | (@as(c_int, 0) << @intCast(4)))) @as(usize, @bitCast(@as(usize, (blk: {
                         _ = @as(c_int, 0);
                         break :blk blk_1: {
                             _ = @as(c_int, 0);
@@ -1710,14 +1710,14 @@ pub export fn luaV_concat(L: [*c]lua_State, arg_total: c_int) void {
                         };
                     }).*.u.lnglen;
                     _ = &l;
-                    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(l >= (((if (@sizeOf(usize) < @sizeOf(lua_Integer)) ~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) else @as(usize, @bitCast(@as(c_long, @truncate(@as(c_longlong, 9223372036854775807)))))) / @sizeOf(u8)) -% tl)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+                    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(l >= (((if (@sizeOf(usize) < @sizeOf(lua_Integer)) ~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) else @as(usize, @bitCast(@as(isize, @truncate(@as(c_longlong, 9223372036854775807)))))) / @sizeOf(u8)) -% tl)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
                         L.*.top.p = top - @as(usize, @bitCast(@as(isize, @intCast(total))));
                         luaG_runerror(L, "string length overflow");
                     }
                     tl +%= l;
                 }
             }
-            if (tl <= @as(usize, @bitCast(@as(c_long, @as(c_int, 40))))) {
+            if (tl <= @as(usize, @bitCast(@as(isize, @as(c_int, 40))))) {
                 var buff: [40]u8 = undefined;
                 _ = &buff;
                 copy2buff(top, n, @as([*c]u8, @ptrCast(@alignCast(&buff[@as(usize, @intCast(0))]))));
@@ -1800,9 +1800,9 @@ pub export fn luaV_modf(L: [*c]lua_State, m: lua_Number, n: lua_Number) lua_Numb
 }
 pub export fn luaV_shiftl(x: lua_Integer, y: lua_Integer) lua_Integer {
     if (y < @as(lua_Integer, @bitCast(@as(c_longlong, 0)))) {
-        if (y <= @as(lua_Integer, @bitCast(@as(c_longlong, -@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(lua_Integer) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8)))))))))))) return 0 else return @as(lua_Integer, @bitCast(@as(lua_Unsigned, @bitCast(x)) >> @intCast(@as(lua_Unsigned, @bitCast(-y)))));
+        if (y <= @as(lua_Integer, @bitCast(@as(c_longlong, -@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(lua_Integer) *% @as(usize, @bitCast(@as(isize, @as(c_int, 8)))))))))))) return 0 else return @as(lua_Integer, @bitCast(@as(lua_Unsigned, @bitCast(x)) >> @intCast(@as(lua_Unsigned, @bitCast(-y)))));
     } else {
-        if (y >= @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(lua_Integer) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8)))))))))))) return 0 else return @as(lua_Integer, @bitCast(@as(lua_Unsigned, @bitCast(x)) << @intCast(@as(lua_Unsigned, @bitCast(y)))));
+        if (y >= @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(lua_Integer) *% @as(usize, @bitCast(@as(isize, @as(c_int, 8)))))))))))) return 0 else return @as(lua_Integer, @bitCast(@as(lua_Unsigned, @bitCast(x)) << @intCast(@as(lua_Unsigned, @bitCast(y)))));
     }
     return std.mem.zeroes(lua_Integer);
 }
@@ -1863,8 +1863,8 @@ comptime {
 pub fn l_strton(obj: [*c]const TValue, result: [*c]TValue) callconv(.c) c_int {
     if (!((@as(c_int, @bitCast(@as(c_uint, obj.*.tt_))) & 15) == 4)) return 0 else {
         const ts = &@as([*c]union_GCUnion, @ptrCast(@alignCast(obj.*.value_.gc))).*.ts;
-        const str_len = if (@as(c_int, @bitCast(@as(c_uint, ts.*.tt))) == (4 | (0 << @intCast(4)))) @as(usize, @bitCast(@as(c_ulong, ts.*.shrlen))) else ts.*.u.lnglen;
-        return @intFromBool(luaO_str2num(@as([*c]u8, @ptrCast(@alignCast(&ts.*.contents[0]))), result) == (str_len +% @as(usize, @bitCast(@as(c_long, 1)))));
+        const str_len = if (@as(c_int, @bitCast(@as(c_uint, ts.*.tt))) == (4 | (0 << @intCast(4)))) @as(usize, @bitCast(@as(usize, ts.*.shrlen))) else ts.*.u.lnglen;
+        return @intFromBool(luaO_str2num(@as([*c]u8, @ptrCast(@alignCast(&ts.*.contents[0]))), result) == (str_len +% @as(usize, @bitCast(@as(isize, 1)))));
     }
     return 0;
 }
@@ -1991,9 +1991,9 @@ pub export fn floatforloop(ra: StkId) callconv(.c) c_int {
 }
 pub fn l_strcmp(ls: [*c]const TString, rs: [*c]const TString) callconv(.c) c_int {
     var l: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast(&ls.*.contents[0])));
-    var ll: usize = if (@as(c_int, @bitCast(@as(c_uint, ls.*.tt))) == (4 | (0 << @intCast(4)))) @as(usize, @bitCast(@as(c_ulong, ls.*.shrlen))) else ls.*.u.lnglen;
+    var ll: usize = if (@as(c_int, @bitCast(@as(c_uint, ls.*.tt))) == (4 | (0 << @intCast(4)))) @as(usize, @bitCast(@as(usize, ls.*.shrlen))) else ls.*.u.lnglen;
     var r: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast(&rs.*.contents[0])));
-    var lr: usize = if (@as(c_int, @bitCast(@as(c_uint, rs.*.tt))) == (4 | (0 << @intCast(4)))) @as(usize, @bitCast(@as(c_ulong, rs.*.shrlen))) else rs.*.u.lnglen;
+    var lr: usize = if (@as(c_int, @bitCast(@as(c_uint, rs.*.tt))) == (4 | (0 << @intCast(4)))) @as(usize, @bitCast(@as(usize, rs.*.shrlen))) else rs.*.u.lnglen;
     while (true) {
         const temp: c_int = strcoll(l, r);
         if (temp != 0) return temp else {
@@ -2069,7 +2069,7 @@ pub fn copy2buff(top: StkId, arg_n: c_int, buff: [*c]u8) callconv(.c) void {
     var tl: usize = 0;
     while (true) {
         const ts = &@as([*c]union_GCUnion, @ptrCast(@alignCast((&(top - @as(usize, @bitCast(@as(isize, @intCast(n))))).*.val).*.value_.gc))).*.ts;
-        const l: usize = if (@as(c_int, @bitCast(@as(c_uint, ts.*.tt))) == (4 | (0 << @intCast(4)))) @as(usize, @bitCast(@as(c_ulong, ts.*.shrlen))) else ts.*.u.lnglen;
+        const l: usize = if (@as(c_int, @bitCast(@as(c_uint, ts.*.tt))) == (4 | (0 << @intCast(4)))) @as(usize, @bitCast(@as(usize, ts.*.shrlen))) else ts.*.u.lnglen;
         _ = memcpy(@as(?*anyopaque, @ptrCast(buff + tl)), @as(?*const anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&ts.*.contents[0]))))), l *% @sizeOf(u8));
         tl +%= l;
         if (!((blk: {

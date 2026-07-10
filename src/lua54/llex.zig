@@ -22,7 +22,7 @@ pub const __builtin_signbit = c_builtins.__builtin_signbit;
 // C type aliases (referenced by Lua internal structs and extern functions)
 pub const wchar_t = c_uint;
 pub const errno_t = c_int;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const wint_t = c_uint;
 pub const intmax_t = c_long;
 pub const uintmax_t = c_ulong;
@@ -59,9 +59,9 @@ pub const __builtin_va_list = struct___va_list_1;
 // l_sprintf, strlcpy, strlcat, xrealloc, __die)
 pub extern fn strtod([*c]const u8, [*c][*c]u8) f64;
 pub extern fn strlen([*c]const u8) c_ulong;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
 pub extern fn abort() noreturn;
 pub extern fn cosh(f64) f64;
 pub extern fn drem(f64, f64) f64;
@@ -303,8 +303,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -336,8 +336,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -1058,7 +1058,7 @@ pub export fn luaX_init(arg_L: [*c]lua_State) void {
     _ = &L;
     var i: c_int = undefined;
     _ = &i;
-    var e: [*c]TString = luaS_newlstr(L, "_ENV", (@sizeOf([5]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))));
+    var e: [*c]TString = luaS_newlstr(L, "_ENV", (@sizeOf([5]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))));
     _ = &e;
     luaC_fix(L, blk: {
         _ = @as(c_int, 0);
@@ -1097,11 +1097,11 @@ pub export fn luaX_setinput(arg_L: [*c]lua_State, arg_ls: [*c]LexState, arg_z: [
     ls.*.linenumber = 1;
     ls.*.lastline = 1;
     ls.*.source = source;
-    ls.*.envn = luaS_newlstr(L, "_ENV", (@sizeOf([5]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))));
+    ls.*.envn = luaS_newlstr(L, "_ENV", (@sizeOf([5]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))));
     _ = blk: {
-        ls.*.buff.*.buffer = @as([*c]u8, @ptrCast(@alignCast(luaM_saferealloc_(ls.*.L, @as(?*anyopaque, @ptrCast(ls.*.buff.*.buffer)), ls.*.buff.*.buffsize *% @sizeOf(u8), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 32)))) *% @sizeOf(u8)))));
+        ls.*.buff.*.buffer = @as([*c]u8, @ptrCast(@alignCast(luaM_saferealloc_(ls.*.L, @as(?*anyopaque, @ptrCast(ls.*.buff.*.buffer)), ls.*.buff.*.buffsize *% @sizeOf(u8), @as(usize, @bitCast(@as(isize, @as(c_int, 32)))) *% @sizeOf(u8)))));
         break :blk blk_1: {
-            const tmp = @as(usize, @bitCast(@as(c_long, @as(c_int, 32))));
+            const tmp = @as(usize, @bitCast(@as(isize, @as(c_int, 32))));
             ls.*.buff.*.buffsize = tmp;
             break :blk_1 tmp;
         };
@@ -1160,7 +1160,7 @@ pub export fn luaX_newstring(arg_ls: [*c]LexState, arg_str: [*c]const u8, arg_l:
         }
         luaH_finishset(L, ls.*.h, stv, o, stv);
         {
-            if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(isize, @as(c_int, 0))))) {
                 _ = @as(c_int, 0);
                 luaC_step(L);
                 _ = @as(c_int, 0);
@@ -1449,13 +1449,13 @@ pub fn save(arg_ls: [*c]LexState, arg_c: c_int) callconv(.c) void {
     _ = &c;
     var b: [*c]Mbuffer = ls.*.buff;
     _ = &b;
-    if ((b.*.n +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) > b.*.buffsize) {
+    if ((b.*.n +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) > b.*.buffsize) {
         var newsize: usize = undefined;
         _ = &newsize;
-        if (b.*.buffsize >= ((if (@sizeOf(usize) < @sizeOf(lua_Integer)) ~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) else @as(usize, @bitCast(@as(c_long, @truncate(@as(c_longlong, 9223372036854775807)))))) / @as(usize, @bitCast(@as(c_long, @as(c_int, 2)))))) {
+        if (b.*.buffsize >= ((if (@sizeOf(usize) < @sizeOf(lua_Integer)) ~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) else @as(usize, @bitCast(@as(isize, @truncate(@as(c_longlong, 9223372036854775807)))))) / @as(usize, @bitCast(@as(isize, @as(c_int, 2)))))) {
             lexerror(ls, "lexical element too long", @as(c_int, 0));
         }
-        newsize = b.*.buffsize *% @as(usize, @bitCast(@as(c_long, @as(c_int, 2))));
+        newsize = b.*.buffsize *% @as(usize, @bitCast(@as(isize, @as(c_int, 2))));
         _ = blk: {
             b.*.buffer = @as([*c]u8, @ptrCast(@alignCast(luaM_saferealloc_(ls.*.L, @as(?*anyopaque, @ptrCast(b.*.buffer)), b.*.buffsize *% @sizeOf(u8), newsize *% @sizeOf(u8)))));
             break :blk blk_1: {
@@ -1507,7 +1507,7 @@ pub fn inclinenumber(arg_ls: [*c]LexState) callconv(.c) void {
             const tmp_2 = ref.*;
             ref.* -%= 1;
             break :blk_1 tmp_2;
-        }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+        }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
             const ref = &ls.*.z.*.p;
             const tmp_2 = ref.*;
             ref.* += 1;
@@ -1523,7 +1523,7 @@ pub fn inclinenumber(arg_ls: [*c]LexState) callconv(.c) void {
                 const tmp_2 = ref.*;
                 ref.* -%= 1;
                 break :blk_1 tmp_2;
-            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                 const ref = &ls.*.z.*.p;
                 const tmp_2 = ref.*;
                 ref.* += 1;
@@ -1553,7 +1553,7 @@ pub fn check_next1(arg_ls: [*c]LexState, arg_c: c_int) callconv(.c) c_int {
                 const tmp_2 = ref.*;
                 ref.* -%= 1;
                 break :blk_1 tmp_2;
-            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                 const ref = &ls.*.z.*.p;
                 const tmp_2 = ref.*;
                 ref.* += 1;
@@ -1581,7 +1581,7 @@ pub fn check_next2(arg_ls: [*c]LexState, arg_set: [*c]const u8) callconv(.c) c_i
                     const tmp_3 = ref.*;
                     ref.* -%= 1;
                     break :blk_2 tmp_3;
-                }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+                }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                     const ref = &ls.*.z.*.p;
                     const tmp_3 = ref.*;
                     ref.* += 1;
@@ -1615,7 +1615,7 @@ pub fn read_numeral(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c)
                 const tmp_3 = ref.*;
                 ref.* -%= 1;
                 break :blk_2 tmp_3;
-            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                 const ref = &ls.*.z.*.p;
                 const tmp_3 = ref.*;
                 ref.* += 1;
@@ -1644,7 +1644,7 @@ pub fn read_numeral(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c)
                         const tmp_3 = ref.*;
                         ref.* -%= 1;
                         break :blk_2 tmp_3;
-                    }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+                    }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                         const ref = &ls.*.z.*.p;
                         const tmp_3 = ref.*;
                         ref.* += 1;
@@ -1669,7 +1669,7 @@ pub fn read_numeral(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c)
                     const tmp_3 = ref.*;
                     ref.* -%= 1;
                     break :blk_2 tmp_3;
-                }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+                }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                     const ref = &ls.*.z.*.p;
                     const tmp_3 = ref.*;
                     ref.* += 1;
@@ -1681,7 +1681,7 @@ pub fn read_numeral(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c)
         };
     }
     save(ls, @as(c_int, '\x00'));
-    if (luaO_str2num(ls.*.buff.*.buffer, &obj) == @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (luaO_str2num(ls.*.buff.*.buffer, &obj) == @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) {
         lexerror(ls, "malformed number", TK_FLT);
     }
     if (@as(c_int, @bitCast(@as(c_uint, (&obj).*.tt_))) == (@as(c_int, 3) | (@as(c_int, 0) << @intCast(4)))) {
@@ -1716,7 +1716,7 @@ pub fn skip_sep(arg_ls: [*c]LexState) callconv(.c) usize {
                 const tmp_3 = ref.*;
                 ref.* -%= 1;
                 break :blk_2 tmp_3;
-            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                 const ref = &ls.*.z.*.p;
                 const tmp_3 = ref.*;
                 ref.* += 1;
@@ -1735,7 +1735,7 @@ pub fn skip_sep(arg_ls: [*c]LexState) callconv(.c) usize {
                     const tmp_3 = ref.*;
                     ref.* -%= 1;
                     break :blk_2 tmp_3;
-                }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+                }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                     const ref = &ls.*.z.*.p;
                     const tmp_3 = ref.*;
                     ref.* += 1;
@@ -1747,7 +1747,7 @@ pub fn skip_sep(arg_ls: [*c]LexState) callconv(.c) usize {
         };
         count +%= 1;
     }
-    return if (ls.*.current == s) count +% @as(usize, @bitCast(@as(c_long, @as(c_int, 2)))) else @as(usize, @bitCast(@as(c_long, if (count == @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, 1) else @as(c_int, 0))));
+    return if (ls.*.current == s) count +% @as(usize, @bitCast(@as(isize, @as(c_int, 2)))) else @as(usize, @bitCast(@as(isize, if (count == @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, 1) else @as(c_int, 0))));
 }
 // Helper: next(ls) — zgetc inlined (translate-c failed on assignment + postfix inc)
 fn llex_next(ls: [*c]LexState) void {
@@ -1831,7 +1831,7 @@ pub fn esccheck(arg_ls: [*c]LexState, arg_c: c_int, arg_msg: [*c]const u8) callc
                         const tmp_3 = ref.*;
                         ref.* -%= 1;
                         break :blk_2 tmp_3;
-                    }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+                    }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                         const ref = &ls.*.z.*.p;
                         const tmp_3 = ref.*;
                         ref.* += 1;
@@ -1856,7 +1856,7 @@ pub fn gethexa(arg_ls: [*c]LexState) callconv(.c) c_int {
                 const tmp_3 = ref.*;
                 ref.* -%= 1;
                 break :blk_2 tmp_3;
-            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                 const ref = &ls.*.z.*.p;
                 const tmp_3 = ref.*;
                 ref.* += 1;
@@ -1881,7 +1881,7 @@ pub fn readhexaesc(arg_ls: [*c]LexState) callconv(.c) c_int {
     r = (r << @intCast(4)) + gethexa(ls);
     _ = blk: {
         const ref = &ls.*.buff.*.n;
-        ref.* -%= @as(usize, @bitCast(@as(c_long, @as(c_int, 2))));
+        ref.* -%= @as(usize, @bitCast(@as(isize, @as(c_int, 2))));
         break :blk ref.*;
     };
     return r;
@@ -1901,7 +1901,7 @@ pub fn readutf8esc(arg_ls: [*c]LexState) callconv(.c) c_ulong {
                 const tmp_3 = ref.*;
                 ref.* -%= 1;
                 break :blk_2 tmp_3;
-            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                 const ref = &ls.*.z.*.p;
                 const tmp_3 = ref.*;
                 ref.* += 1;
@@ -1912,7 +1912,7 @@ pub fn readutf8esc(arg_ls: [*c]LexState) callconv(.c) c_ulong {
         };
     };
     esccheck(ls, @intFromBool(ls.*.current == @as(c_int, '{')), "missing '{'");
-    r = @as(c_ulong, @bitCast(@as(c_long, gethexa(ls))));
+    r = @as(usize, @bitCast(@as(isize, gethexa(ls))));
     while ((blk: {
         _ = blk_1: {
             save(ls, ls.*.current);
@@ -1922,7 +1922,7 @@ pub fn readutf8esc(arg_ls: [*c]LexState) callconv(.c) c_ulong {
                     const tmp_4 = ref.*;
                     ref.* -%= 1;
                     break :blk_3 tmp_4;
-                }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_3: {
+                }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_3: {
                     const ref = &ls.*.z.*.p;
                     const tmp_4 = ref.*;
                     ref.* += 1;
@@ -1939,8 +1939,8 @@ pub fn readutf8esc(arg_ls: [*c]LexState) callconv(.c) c_ulong {
         };
     })) {
         i += 1;
-        esccheck(ls, @intFromBool(r <= @as(c_ulong, @bitCast(@as(c_ulong, @as(c_uint, 2147483647) >> @intCast(4))))), "UTF-8 value too large");
-        r = (r << @intCast(4)) +% @as(c_ulong, @bitCast(@as(c_long, luaO_hexavalue(ls.*.current))));
+        esccheck(ls, @intFromBool(r <= @as(usize, @bitCast(@as(usize, @as(c_uint, 2147483647) >> @intCast(4))))), "UTF-8 value too large");
+        r = (r << @intCast(4)) +% @as(usize, @bitCast(@as(isize, luaO_hexavalue(ls.*.current))));
     }
     esccheck(ls, @intFromBool(ls.*.current == @as(c_int, '}')), "missing '}'");
     _ = blk: {
@@ -1949,7 +1949,7 @@ pub fn readutf8esc(arg_ls: [*c]LexState) callconv(.c) c_ulong {
             const tmp_2 = ref.*;
             ref.* -%= 1;
             break :blk_1 tmp_2;
-        }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+        }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
             const ref = &ls.*.z.*.p;
             const tmp_2 = ref.*;
             ref.* += 1;
@@ -1960,7 +1960,7 @@ pub fn readutf8esc(arg_ls: [*c]LexState) callconv(.c) c_ulong {
     };
     _ = blk: {
         const ref = &ls.*.buff.*.n;
-        ref.* -%= @as(usize, @bitCast(@as(c_long, i)));
+        ref.* -%= @as(usize, @bitCast(@as(isize, i)));
         break :blk ref.*;
     };
     return r;
@@ -1999,7 +1999,7 @@ pub fn readdecesc(arg_ls: [*c]LexState) callconv(.c) c_int {
                         const tmp_3 = ref.*;
                         ref.* -%= 1;
                         break :blk_2 tmp_3;
-                    }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+                    }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                         const ref = &ls.*.z.*.p;
                         const tmp_3 = ref.*;
                         ref.* += 1;
@@ -2014,7 +2014,7 @@ pub fn readdecesc(arg_ls: [*c]LexState) callconv(.c) c_int {
     esccheck(ls, @intFromBool(r <= @as(c_int, 255)), "decimal escape too large");
     _ = blk: {
         const ref = &ls.*.buff.*.n;
-        ref.* -%= @as(usize, @bitCast(@as(c_long, i)));
+        ref.* -%= @as(usize, @bitCast(@as(isize, i)));
         break :blk ref.*;
     };
     return r;
@@ -2112,7 +2112,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
     var seminfo = arg_seminfo;
     _ = &seminfo;
     _ = blk: {
-        const tmp = @as(usize, @bitCast(@as(c_long, @as(c_int, 0))));
+        const tmp = @as(usize, @bitCast(@as(isize, @as(c_int, 0))));
         ls.*.buff.*.n = tmp;
         break :blk tmp;
     };
@@ -2133,7 +2133,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2153,7 +2153,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2169,7 +2169,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2182,14 +2182,14 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                             var sep: usize = skip_sep(ls);
                             _ = &sep;
                             _ = blk: {
-                                const tmp = @as(usize, @bitCast(@as(c_long, @as(c_int, 0))));
+                                const tmp = @as(usize, @bitCast(@as(isize, @as(c_int, 0))));
                                 ls.*.buff.*.n = tmp;
                                 break :blk tmp;
                             };
-                            if (sep >= @as(usize, @bitCast(@as(c_long, @as(c_int, 2))))) {
+                            if (sep >= @as(usize, @bitCast(@as(isize, @as(c_int, 2))))) {
                                 read_long_string(ls, null, sep);
                                 _ = blk: {
-                                    const tmp = @as(usize, @bitCast(@as(c_long, @as(c_int, 0))));
+                                    const tmp = @as(usize, @bitCast(@as(isize, @as(c_int, 0))));
                                     ls.*.buff.*.n = tmp;
                                     break :blk tmp;
                                 };
@@ -2203,7 +2203,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                     const tmp_2 = ref.*;
                                     ref.* -%= 1;
                                     break :blk_1 tmp_2;
-                                }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                                }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                     const ref = &ls.*.z.*.p;
                                     const tmp_2 = ref.*;
                                     ref.* += 1;
@@ -2220,10 +2220,10 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                     {
                         var sep: usize = skip_sep(ls);
                         _ = &sep;
-                        if (sep >= @as(usize, @bitCast(@as(c_long, @as(c_int, 2))))) {
+                        if (sep >= @as(usize, @bitCast(@as(isize, @as(c_int, 2))))) {
                             read_long_string(ls, seminfo, sep);
                             return TK_STRING;
-                        } else if (sep == @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                        } else if (sep == @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) {
                             lexerror(ls, "invalid long string delimiter", TK_STRING);
                         }
                         return '[';
@@ -2237,7 +2237,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2255,7 +2255,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2273,7 +2273,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2291,7 +2291,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2309,7 +2309,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2327,7 +2327,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2351,7 +2351,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2369,7 +2369,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2387,7 +2387,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2405,7 +2405,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2423,7 +2423,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2447,7 +2447,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2465,7 +2465,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2483,7 +2483,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2501,7 +2501,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2525,7 +2525,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2543,7 +2543,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2561,7 +2561,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2585,7 +2585,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2603,7 +2603,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2627,7 +2627,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                 const tmp_2 = ref.*;
                                 ref.* -%= 1;
                                 break :blk_1 tmp_2;
-                            }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                            }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                 const ref = &ls.*.z.*.p;
                                 const tmp_2 = ref.*;
                                 ref.* += 1;
@@ -2659,7 +2659,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                     const tmp_3 = ref.*;
                                     ref.* -%= 1;
                                     break :blk_2 tmp_3;
-                                }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+                                }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                                     const ref = &ls.*.z.*.p;
                                     const tmp_3 = ref.*;
                                     ref.* += 1;
@@ -2709,7 +2709,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                             const tmp_3 = ref.*;
                                             ref.* -%= 1;
                                             break :blk_2 tmp_3;
-                                        }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
+                                        }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_2: {
                                             const ref = &ls.*.z.*.p;
                                             const tmp_3 = ref.*;
                                             ref.* += 1;
@@ -2739,7 +2739,7 @@ pub fn llex(arg_ls: [*c]LexState, arg_seminfo: [*c]SemInfo) callconv(.c) c_int {
                                     const tmp_2 = ref.*;
                                     ref.* -%= 1;
                                     break :blk_1 tmp_2;
-                                }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
+                                }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk_1: {
                                     const ref = &ls.*.z.*.p;
                                     const tmp_2 = ref.*;
                                     ref.* += 1;

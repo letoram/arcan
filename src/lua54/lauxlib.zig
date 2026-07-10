@@ -71,7 +71,7 @@ pub const wchar_t = c_uint;
 pub const char16_t = c_ushort;
 pub const char32_t = c_uint;
 pub const errno_t = c_int;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const wint_t = c_uint;
 pub const bool32 = c_int;
 pub const intmax_t = c_long;
@@ -298,17 +298,17 @@ pub extern fn heapsort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaqu
 pub extern fn mergesort(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.c) c_int) c_int;
 pub extern fn mergesort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque, ?*anyopaque) callconv(.c) c_int, ?*anyopaque) c_int;
 pub extern fn free(?*anyopaque) void;
-pub extern fn malloc(c_ulong) ?*anyopaque;
-pub extern fn calloc(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn memalign(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
+pub extern fn malloc(usize) ?*anyopaque;
+pub extern fn calloc(usize, usize) ?*anyopaque;
+pub extern fn memalign(usize, usize) ?*anyopaque;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
 pub extern fn realloc_in_place(?*anyopaque, usize) ?*anyopaque;
 pub extern fn reallocarray(?*anyopaque, usize, usize) ?*anyopaque;
 pub extern fn valloc(usize) ?*anyopaque;
 pub extern fn pvalloc(usize) ?*anyopaque;
 pub extern fn strdup([*c]const u8) [*c]u8;
-pub extern fn strndup([*c]const u8, c_ulong) [*c]u8;
-pub extern fn aligned_alloc(c_ulong, c_ulong) ?*anyopaque;
+pub extern fn strndup([*c]const u8, usize) [*c]u8;
+pub extern fn aligned_alloc(usize, usize) ?*anyopaque;
 pub extern fn posix_memalign([*c]?*anyopaque, usize, usize) c_int;
 pub extern fn mallopt(c_int, c_int) c_int;
 pub extern fn malloc_trim(usize) c_int;
@@ -391,35 +391,35 @@ pub extern fn fcvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn ecvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn gcvt(f64, c_int, [*c]u8) [*c]u8;
 pub extern fn at_quick_exit(?*const fn () callconv(.c) void) c_int;
-pub extern fn memset(?*anyopaque, c_int, c_ulong) ?*anyopaque;
-pub extern fn memmove(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memcpy(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
+pub extern fn memset(?*anyopaque, c_int, usize) ?*anyopaque;
+pub extern fn memmove(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
+pub extern fn memcpy(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
 pub extern fn hexpcpy([*c]u8, ?*const anyopaque, usize) [*c]u8;
-pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
+pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn strlen([*c]const u8) c_ulong;
 pub extern fn strnlen([*c]const u8, usize) usize;
 pub extern fn strnlen_s([*c]const u8, usize) usize;
 pub extern fn strchr([*c]const u8, c_int) [*c]u8;
-pub extern fn memchr(?*const anyopaque, c_int, c_ulong) ?*anyopaque;
+pub extern fn memchr(?*const anyopaque, c_int, usize) ?*anyopaque;
 pub extern fn rawmemchr(?*const anyopaque, c_int) ?*anyopaque;
 pub extern fn wcslen([*c]const c_uint) c_ulong;
 pub extern fn wcsnlen([*c]const wchar_t, usize) usize;
 pub extern fn wcsnlen_s([*c]const wchar_t, usize) usize;
 pub extern fn wcschr([*c]const c_uint, c_uint) [*c]c_uint;
-pub extern fn wmemchr([*c]const c_uint, c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemchr([*c]const c_uint, c_uint, usize) [*c]c_uint;
 pub extern fn wcschrnul([*c]const wchar_t, wchar_t) [*c]wchar_t;
 pub extern fn strstr([*c]const u8, [*c]const u8) [*c]u8;
 pub extern fn wcsstr([*c]const wchar_t, [*c]const wchar_t) [*c]wchar_t;
 pub extern fn strcmp([*c]const u8, [*c]const u8) c_int;
-pub extern fn strncmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcscmp([*c]const c_uint, [*c]const c_uint) c_int;
-pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
-pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
+pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
+pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
 pub extern fn strcasecmp([*c]const u8, [*c]const u8) c_int;
 pub extern fn wcscasecmp([*c]const wchar_t, [*c]const wchar_t) c_int;
-pub extern fn strncasecmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncasecmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcsncasecmp([*c]const wchar_t, [*c]const wchar_t, usize) c_int;
 pub extern fn strrchr([*c]const u8, c_int) [*c]u8;
 pub extern fn wcsrchr([*c]const wchar_t, wchar_t) [*c]wchar_t;
@@ -432,21 +432,21 @@ pub extern fn wcscspn([*c]const wchar_t, [*c]const wchar_t) usize;
 pub extern fn memfrob(?*anyopaque, usize) ?*anyopaque;
 pub extern fn strcoll([*c]const u8, [*c]const u8) c_int;
 pub extern fn stpcpy([*c]u8, [*c]const u8) [*c]u8;
-pub extern fn stpncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn stpncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strcat([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscat([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strxfrm([*c]u8, [*c]const u8, c_ulong) c_ulong;
+pub extern fn strxfrm([*c]u8, [*c]const u8, usize) usize;
 pub extern fn strcpy([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscpy([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn wcsncat([*c]wchar_t, [*c]const wchar_t, usize) [*c]wchar_t;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strtok([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn strtok_r([*c]u8, [*c]const u8, [*c][*c]u8) [*c]u8;
 pub extern fn wcstok([*c]wchar_t, [*c]const wchar_t, [*c][*c]wchar_t) [*c]wchar_t;
 pub extern fn wmemset([*c]wchar_t, wchar_t, usize) [*c]wchar_t;
-pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
-pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
+pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
 pub extern fn strfmon([*c]u8, usize, [*c]const u8, ...) isize;
 pub extern fn a64l([*c]const u8) c_long;
 pub extern fn l64a(c_long) [*c]u8;
@@ -476,9 +476,9 @@ pub extern fn strsignal(c_int) [*c]u8;
 pub extern fn strerror(c_int) [*c]u8;
 pub extern fn strerror_r(c_int, [*c]u8, usize) errno_t;
 pub extern fn __xpg_strerror_r(c_int, [*c]u8, usize) [*c]u8;
-pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
-pub extern fn bcopy(?*const anyopaque, ?*anyopaque, c_ulong) void;
-pub extern fn bzero(?*anyopaque, c_ulong) void;
+pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
+pub extern fn bcopy(?*const anyopaque, ?*anyopaque, usize) void;
+pub extern fn bzero(?*anyopaque, usize) void;
 pub extern fn index([*c]const u8, c_int) [*c]u8;
 pub extern fn rindex([*c]const u8, c_int) [*c]u8;
 pub extern fn mktemp([*c]u8) [*c]u8;
@@ -538,8 +538,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -571,8 +571,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -817,7 +817,7 @@ pub export fn luaL_checkversion_(arg_L: ?*lua_State, arg_ver: lua_Number, arg_sz
     _ = &sz;
     var v: lua_Number = lua_version(L);
     _ = &v;
-    if (sz != ((@sizeOf(lua_Integer) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 16))))) +% @sizeOf(lua_Number))) {
+    if (sz != ((@sizeOf(lua_Integer) *% @as(usize, @bitCast(@as(isize, @as(c_int, 16))))) +% @sizeOf(lua_Number))) {
         _ = luaL_error(L, "core and library have incompatible numeric types");
     } else if (v != ver) {
         _ = luaL_error(L, "version mismatch: app. needs %f, Lua core provides %f", @as(f64, @floatCast(ver)), @as(f64, @floatCast(v)));
@@ -857,7 +857,7 @@ pub export fn luaL_callmeta(arg_L: ?*lua_State, arg_obj: c_int, arg_event: [*c]c
     obj = lua_absindex(L, obj);
     if (luaL_getmetafield(L, obj, event) == @as(c_int, 0)) return 0;
     lua_pushvalue(L, obj);
-    lua_callk(L, @as(c_int, 1), @as(c_int, 1), @as(lua_KContext, @bitCast(@as(c_long, @as(c_int, 0)))), null);
+    lua_callk(L, @as(c_int, 1), @as(c_int, 1), @as(lua_KContext, @bitCast(@as(isize, @as(c_int, 0)))), null);
     return 1;
 }
 pub export fn luaL_tolstring(arg_L: ?*lua_State, arg_idx: c_int, arg_len: [*c]usize) callconv(.c) [*c]const u8 {
@@ -1036,7 +1036,7 @@ pub export fn luaL_checklstring(arg_L: ?*lua_State, arg_arg: c_int, arg_len: [*c
     _ = &len;
     var s: [*c]const u8 = lua_tolstring(L, arg, len);
     _ = &s;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(s != null)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(s != null)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         tag_error(L, arg, @as(c_int, 4));
     }
     return s;
@@ -1055,7 +1055,7 @@ pub export fn luaL_optlstring(arg_L: ?*lua_State, arg_arg: c_int, arg_def: [*c]c
     _ = &len;
     if (lua_type(L, arg) <= @as(c_int, 0)) {
         if (len != null) {
-            len.* = if (def != null) strlen(def) else @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0))));
+            len.* = if (def != null) strlen(def) else @as(usize, @bitCast(@as(isize, @as(c_int, 0))));
         }
         return def;
     } else return luaL_checklstring(L, arg, len);
@@ -1070,7 +1070,7 @@ pub export fn luaL_checknumber(arg_L: ?*lua_State, arg_arg: c_int) callconv(.c) 
     _ = &isnum;
     var d: lua_Number = lua_tonumberx(L, arg, &isnum);
     _ = &d;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(isnum != 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(isnum != 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         tag_error(L, arg, @as(c_int, 3));
     }
     return d;
@@ -1093,7 +1093,7 @@ pub export fn luaL_checkinteger(arg_L: ?*lua_State, arg_arg: c_int) callconv(.c)
     _ = &isnum;
     var d: lua_Integer = lua_tointegerx(L, arg, &isnum);
     _ = &d;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(isnum != 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(isnum != 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         interror(L, arg);
     }
     return d;
@@ -1114,7 +1114,7 @@ pub export fn luaL_checkstack(arg_L: ?*lua_State, arg_space: c_int, arg_msg: [*c
     _ = &space;
     var msg = arg_msg;
     _ = &msg;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(lua_checkstack(L, space) != 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(lua_checkstack(L, space) != 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         if (msg != null) {
             _ = luaL_error(L, "stack overflow (%s)", msg);
         } else {
@@ -1129,7 +1129,7 @@ pub export fn luaL_checktype(arg_L: ?*lua_State, arg_arg: c_int, arg_t: c_int) c
     _ = &arg;
     var t = arg_t;
     _ = &t;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(lua_type(L, arg) != t) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(lua_type(L, arg) != t) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         tag_error(L, arg, t);
     }
 }
@@ -1138,7 +1138,7 @@ pub export fn luaL_checkany(arg_L: ?*lua_State, arg_arg: c_int) callconv(.c) voi
     _ = &L;
     var arg = arg_arg;
     _ = &arg;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(lua_type(L, arg) == -@as(c_int, 1)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(lua_type(L, arg) == -@as(c_int, 1)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         _ = luaL_argerror(L, arg, "value expected");
     }
 }
@@ -1194,7 +1194,7 @@ pub export fn luaL_checkudata(arg_L: ?*lua_State, arg_ud: c_int, arg_tname: [*c]
     _ = &tname;
     var p: ?*anyopaque = luaL_testudata(L, ud, tname);
     _ = &p;
-    _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(p != @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_typeerror(L, ud, tname) != 0);
+    _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(p != @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_typeerror(L, ud, tname) != 0);
     return p;
 }
 pub export fn luaL_where(arg_L: ?*lua_State, arg_level: c_int) callconv(.c) void {
@@ -1436,7 +1436,7 @@ pub export fn luaL_loadstring(arg_L: ?*lua_State, arg_s: [*c]const u8) callconv(
 pub export fn luaL_newstate() callconv(.c) ?*lua_State {
     var L: ?*lua_State = lua_newstate(&l_alloc, @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))));
     _ = &L;
-    if (__builtin_expect(@as(c_long, @intFromBool(L != null)), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(L != null)), @as(c_long, @as(c_int, 1))) != 0) {
         _ = lua_atpanic(L, &lua_panic_handler);
         lua_setwarnf(L, &warnfoff, @as(?*anyopaque, @ptrCast(L)));
     }
@@ -1453,7 +1453,7 @@ pub export fn luaL_len(arg_L: ?*lua_State, arg_idx: c_int) callconv(.c) lua_Inte
     _ = &isnum;
     lua_len(L, idx);
     l = lua_tointegerx(L, -@as(c_int, 1), &isnum);
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(isnum != 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(isnum != 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         _ = luaL_error(L, "object length is not an integer");
     }
     lua_settop(L, -@as(c_int, 1) - @as(c_int, 1));
@@ -1477,7 +1477,7 @@ pub export fn luaL_addgsub(arg_b: [*c]luaL_Buffer, arg_s: [*c]const u8, arg_p: [
         wild = tmp;
         break :blk tmp;
     }) != @as([*c]const u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) {
-        luaL_addlstring(b, s, @as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(wild) -% @intFromPtr(s))), @sizeOf(u8)))));
+        luaL_addlstring(b, s, @as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(wild) -% @intFromPtr(s))), @sizeOf(u8)))));
         luaL_addstring(b, r);
         s = wild + l;
     }
@@ -1563,7 +1563,7 @@ pub export fn luaL_traceback(arg_L: ?*lua_State, arg_L1: ?*lua_State, arg_msg: [
     if (msg != null) {
         luaL_addstring(&b, msg);
         _ = blk: {
-            _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+            _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
             break :blk blk_1: {
                 const tmp = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, '\n')))));
                 (&b).*.b[blk_2: {
@@ -1726,7 +1726,7 @@ pub export fn luaL_requiref(arg_L: ?*lua_State, arg_modname: [*c]const u8, arg_o
         lua_settop(L, -@as(c_int, 1) - @as(c_int, 1));
         lua_pushcclosure(L, openf, @as(c_int, 0));
         _ = lua_pushstring(L, modname);
-        lua_callk(L, @as(c_int, 1), @as(c_int, 1), @as(lua_KContext, @bitCast(@as(c_long, @as(c_int, 0)))), null);
+        lua_callk(L, @as(c_int, 1), @as(c_int, 1), @as(lua_KContext, @bitCast(@as(isize, @as(c_int, 0)))), null);
         lua_pushvalue(L, -@as(c_int, 1));
         lua_setfield(L, -@as(c_int, 3), modname);
     }
@@ -1747,7 +1747,7 @@ pub export fn luaL_buffinit(arg_L: ?*lua_State, arg_B: [*c]luaL_Buffer) callconv
     B.*.L = L;
     B.*.b = @as([*c]u8, @ptrCast(@alignCast(&B.*.init.b[@as(usize, @intCast(0))])));
     B.*.n = 0;
-    B.*.size = @as(usize, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, @truncate((@as(c_ulong, @bitCast(@as(c_long, @as(c_int, 16)))) *% @sizeOf(?*anyopaque)) *% @sizeOf(lua_Number))))))));
+    B.*.size = @as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, @truncate((@as(usize, @bitCast(@as(isize, @as(c_int, 16)))) *% @sizeOf(?*anyopaque)) *% @sizeOf(lua_Number))))))));
     lua_pushlightuserdata(L, @as(?*anyopaque, @ptrCast(B)));
 }
 pub export fn luaL_prepbuffsize(arg_B: [*c]luaL_Buffer, arg_sz: usize) callconv(.c) [*c]u8 {
@@ -1764,7 +1764,7 @@ pub export fn luaL_addlstring(arg_B: [*c]luaL_Buffer, arg_s: [*c]const u8, arg_l
     _ = &s;
     var l = arg_l;
     _ = &l;
-    if (l > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (l > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) {
         var b: [*c]u8 = prepbuffsize(B, l, -@as(c_int, 1));
         _ = &b;
         _ = memcpy(@as(?*anyopaque, @ptrCast(b)), @as(?*const anyopaque, @ptrCast(s)), l *% @sizeOf(u8));
@@ -1886,7 +1886,7 @@ pub fn pushglobalfuncname(arg_L: ?*lua_State, arg_ar: [*c]lua_Debug) callconv(.c
     if (findfield(L, top + @as(c_int, 1), @as(c_int, 2)) != 0) {
         var name: [*c]const u8 = lua_tolstring(L, -@as(c_int, 1), null);
         _ = &name;
-        if (strncmp(name, "_G.", @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 3))))) == @as(c_int, 0)) {
+        if (strncmp(name, "_G.", @as(usize, @bitCast(@as(isize, @as(c_int, 3))))) == @as(c_int, 0)) {
             _ = lua_pushstring(L, name + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 3))))));
             _ = blk: {
                 lua_rotate(L, -@as(c_int, 2), -@as(c_int, 1));
@@ -2028,7 +2028,7 @@ pub fn resizebox(arg_L: ?*lua_State, arg_idx: c_int, arg_newsize: usize) callcon
     _ = &box;
     var temp: ?*anyopaque = allocf.?(ud, box.*.box, box.*.bsize, newsize);
     _ = &temp;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((temp == @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))) and (newsize > @as(usize, @bitCast(@as(c_long, @as(c_int, 0)))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((temp == @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))) and (newsize > @as(usize, @bitCast(@as(isize, @as(c_int, 0)))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         _ = lua_pushstring(L, "not enough memory");
         _ = lua_error(L);
     }
@@ -2039,7 +2039,7 @@ pub fn resizebox(arg_L: ?*lua_State, arg_idx: c_int, arg_newsize: usize) callcon
 pub fn boxgc(arg_L: ?*lua_State) callconv(.c) c_int {
     var L = arg_L;
     _ = &L;
-    _ = resizebox(L, @as(c_int, 1), @as(usize, @bitCast(@as(c_long, @as(c_int, 0)))));
+    _ = resizebox(L, @as(c_int, 1), @as(usize, @bitCast(@as(isize, @as(c_int, 0)))));
     return 0;
 }
 pub const boxmt: [3]luaL_Reg = [3]luaL_Reg{
@@ -2073,9 +2073,9 @@ pub fn newbuffsize(arg_B: [*c]luaL_Buffer, arg_sz: usize) callconv(.c) usize {
     _ = &B;
     var sz = arg_sz;
     _ = &sz;
-    var newsize: usize = (B.*.size / @as(usize, @bitCast(@as(c_long, @as(c_int, 2))))) *% @as(usize, @bitCast(@as(c_long, @as(c_int, 3))));
+    var newsize: usize = (B.*.size / @as(usize, @bitCast(@as(isize, @as(c_int, 2))))) *% @as(usize, @bitCast(@as(isize, @as(c_int, 3))));
     _ = &newsize;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) -% sz) < B.*.n) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) return @as(usize, @bitCast(@as(c_long, luaL_error(B.*.L, "buffer too large"))));
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) -% sz) < B.*.n) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) return @as(usize, @bitCast(@as(isize, luaL_error(B.*.L, "buffer too large"))));
     if (newsize < (B.*.n +% sz)) {
         newsize = B.*.n +% sz;
     }
@@ -2126,11 +2126,11 @@ pub fn getF(arg_L: ?*lua_State, arg_ud: ?*anyopaque, arg_size: [*c]usize) callco
     _ = &lf;
     _ = &L;
     if (lf.*.n > @as(c_int, 0)) {
-        size.* = @as(usize, @bitCast(@as(c_long, lf.*.n)));
+        size.* = @as(usize, @bitCast(@as(isize, lf.*.n)));
         lf.*.n = 0;
     } else {
         if (feof(lf.*.f) != 0) return null;
-        size.* = fread(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&lf.*.buff[@as(usize, @intCast(0))]))))), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))), @sizeOf([4096]u8), lf.*.f);
+        size.* = fread(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&lf.*.buff[@as(usize, @intCast(0))]))))), @as(usize, @bitCast(@as(isize, @as(c_int, 1)))), @sizeOf([4096]u8), lf.*.f);
     }
     return @as([*c]u8, @ptrCast(@alignCast(&lf.*.buff[@as(usize, @intCast(0))])));
 }
@@ -2177,7 +2177,7 @@ pub fn getS(arg_L: ?*lua_State, arg_ud: ?*anyopaque, arg_size: [*c]usize) callco
     var ls: [*c]LoadS = @as([*c]LoadS, @ptrCast(@alignCast(ud)));
     _ = &ls;
     _ = &L;
-    if (ls.*.size == @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) return null;
+    if (ls.*.size == @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) return null;
     size.* = ls.*.size;
     ls.*.size = 0;
     return ls.*.s;

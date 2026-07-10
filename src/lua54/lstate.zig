@@ -62,7 +62,7 @@ pub const wchar_t = c_uint;
 pub const char16_t = c_ushort;
 pub const char32_t = c_uint;
 pub const errno_t = c_int;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const wint_t = c_uint;
 pub const bool32 = c_int;
 pub const intmax_t = c_long;
@@ -289,17 +289,17 @@ pub extern fn heapsort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaqu
 pub extern fn mergesort(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.c) c_int) c_int;
 pub extern fn mergesort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque, ?*anyopaque) callconv(.c) c_int, ?*anyopaque) c_int;
 pub extern fn free(?*anyopaque) void;
-pub extern fn malloc(c_ulong) ?*anyopaque;
-pub extern fn calloc(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn memalign(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
+pub extern fn malloc(usize) ?*anyopaque;
+pub extern fn calloc(usize, usize) ?*anyopaque;
+pub extern fn memalign(usize, usize) ?*anyopaque;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
 pub extern fn realloc_in_place(?*anyopaque, usize) ?*anyopaque;
 pub extern fn reallocarray(?*anyopaque, usize, usize) ?*anyopaque;
 pub extern fn valloc(usize) ?*anyopaque;
 pub extern fn pvalloc(usize) ?*anyopaque;
 pub extern fn strdup([*c]const u8) [*c]u8;
-pub extern fn strndup([*c]const u8, c_ulong) [*c]u8;
-pub extern fn aligned_alloc(c_ulong, c_ulong) ?*anyopaque;
+pub extern fn strndup([*c]const u8, usize) [*c]u8;
+pub extern fn aligned_alloc(usize, usize) ?*anyopaque;
 pub extern fn posix_memalign([*c]?*anyopaque, usize, usize) c_int;
 pub extern fn mallopt(c_int, c_int) c_int;
 pub extern fn malloc_trim(usize) c_int;
@@ -382,35 +382,35 @@ pub extern fn fcvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn ecvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn gcvt(f64, c_int, [*c]u8) [*c]u8;
 pub extern fn at_quick_exit(?*const fn () callconv(.c) void) c_int;
-pub extern fn memset(?*anyopaque, c_int, c_ulong) ?*anyopaque;
-pub extern fn memmove(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memcpy(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
+pub extern fn memset(?*anyopaque, c_int, usize) ?*anyopaque;
+pub extern fn memmove(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
+pub extern fn memcpy(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
 pub extern fn hexpcpy([*c]u8, ?*const anyopaque, usize) [*c]u8;
-pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
+pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn strlen([*c]const u8) c_ulong;
 pub extern fn strnlen([*c]const u8, usize) usize;
 pub extern fn strnlen_s([*c]const u8, usize) usize;
 pub extern fn strchr([*c]const u8, c_int) [*c]u8;
-pub extern fn memchr(?*const anyopaque, c_int, c_ulong) ?*anyopaque;
+pub extern fn memchr(?*const anyopaque, c_int, usize) ?*anyopaque;
 pub extern fn rawmemchr(?*const anyopaque, c_int) ?*anyopaque;
 pub extern fn wcslen([*c]const c_uint) c_ulong;
 pub extern fn wcsnlen([*c]const wchar_t, usize) usize;
 pub extern fn wcsnlen_s([*c]const wchar_t, usize) usize;
 pub extern fn wcschr([*c]const c_uint, c_uint) [*c]c_uint;
-pub extern fn wmemchr([*c]const c_uint, c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemchr([*c]const c_uint, c_uint, usize) [*c]c_uint;
 pub extern fn wcschrnul([*c]const wchar_t, wchar_t) [*c]wchar_t;
 pub extern fn strstr([*c]const u8, [*c]const u8) [*c]u8;
 pub extern fn wcsstr([*c]const wchar_t, [*c]const wchar_t) [*c]wchar_t;
 pub extern fn strcmp([*c]const u8, [*c]const u8) c_int;
-pub extern fn strncmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcscmp([*c]const c_uint, [*c]const c_uint) c_int;
-pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
-pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
+pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
+pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
 pub extern fn strcasecmp([*c]const u8, [*c]const u8) c_int;
 pub extern fn wcscasecmp([*c]const wchar_t, [*c]const wchar_t) c_int;
-pub extern fn strncasecmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncasecmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcsncasecmp([*c]const wchar_t, [*c]const wchar_t, usize) c_int;
 pub extern fn strrchr([*c]const u8, c_int) [*c]u8;
 pub extern fn wcsrchr([*c]const wchar_t, wchar_t) [*c]wchar_t;
@@ -423,21 +423,21 @@ pub extern fn wcscspn([*c]const wchar_t, [*c]const wchar_t) usize;
 pub extern fn memfrob(?*anyopaque, usize) ?*anyopaque;
 pub extern fn strcoll([*c]const u8, [*c]const u8) c_int;
 pub extern fn stpcpy([*c]u8, [*c]const u8) [*c]u8;
-pub extern fn stpncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn stpncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strcat([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscat([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strxfrm([*c]u8, [*c]const u8, c_ulong) c_ulong;
+pub extern fn strxfrm([*c]u8, [*c]const u8, usize) usize;
 pub extern fn strcpy([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscpy([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn wcsncat([*c]wchar_t, [*c]const wchar_t, usize) [*c]wchar_t;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strtok([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn strtok_r([*c]u8, [*c]const u8, [*c][*c]u8) [*c]u8;
 pub extern fn wcstok([*c]wchar_t, [*c]const wchar_t, [*c][*c]wchar_t) [*c]wchar_t;
 pub extern fn wmemset([*c]wchar_t, wchar_t, usize) [*c]wchar_t;
-pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
-pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
+pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
 pub extern fn strfmon([*c]u8, usize, [*c]const u8, ...) isize;
 pub extern fn a64l([*c]const u8) c_long;
 pub extern fn l64a(c_long) [*c]u8;
@@ -467,9 +467,9 @@ pub extern fn strsignal(c_int) [*c]u8;
 pub extern fn strerror(c_int) [*c]u8;
 pub extern fn strerror_r(c_int, [*c]u8, usize) errno_t;
 pub extern fn __xpg_strerror_r(c_int, [*c]u8, usize) [*c]u8;
-pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
-pub extern fn bcopy(?*const anyopaque, ?*anyopaque, c_ulong) void;
-pub extern fn bzero(?*anyopaque, c_ulong) void;
+pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
+pub extern fn bcopy(?*const anyopaque, ?*anyopaque, usize) void;
+pub extern fn bzero(?*anyopaque, usize) void;
 pub extern fn index([*c]const u8, c_int) [*c]u8;
 pub extern fn rindex([*c]const u8, c_int) [*c]u8;
 pub extern fn mktemp([*c]u8) [*c]u8;
@@ -779,8 +779,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -812,8 +812,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -1249,7 +1249,7 @@ pub export fn lua_newstate(arg_f: lua_Alloc, arg_ud: ?*anyopaque) callconv(.c) [
     _ = &L;
     var g: [*c]global_State = undefined;
     _ = &g;
-    var l: [*c]LG = @as([*c]LG, @ptrCast(@alignCast(f.?(ud, @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))), @as(usize, @bitCast(@as(c_long, @as(c_int, 8)))), @sizeOf(LG)))));
+    var l: [*c]LG = @as([*c]LG, @ptrCast(@alignCast(f.?(ud, @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))), @as(usize, @bitCast(@as(isize, @as(c_int, 8)))), @sizeOf(LG)))));
     _ = &l;
     if (l == @as([*c]LG, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return null;
     L = &l.*.l.l;
@@ -1398,7 +1398,7 @@ pub export fn lua_newthread(arg_L: [*c]lua_State) callconv(.c) [*c]lua_State {
     _ = &L1;
     _ = @as(c_int, 0);
     {
-        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(isize, @as(c_int, 0))))) {
             _ = @as(c_int, 0);
             luaC_step(L);
             _ = @as(c_int, 0);
@@ -1692,8 +1692,8 @@ pub export fn luaE_setdebt(arg_g: [*c]global_State, arg_debt: l_mem) void {
     var tb: l_mem = @as(l_mem, @bitCast(@as(lu_mem, @bitCast(g.*.totalbytes + g.*.GCdebt))));
     _ = &tb;
     _ = @as(c_int, 0);
-    if (debt < (tb - @as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(c_long, @as(c_int, 0)))) >> @intCast(1))))) {
-        debt = tb - @as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(c_long, @as(c_int, 0)))) >> @intCast(1)));
+    if (debt < (tb - @as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(isize, @as(c_int, 0)))) >> @intCast(1))))) {
+        debt = tb - @as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(isize, @as(c_int, 0)))) >> @intCast(1)));
     }
     g.*.totalbytes = tb - debt;
     g.*.GCdebt = debt;
@@ -1781,7 +1781,7 @@ pub export fn luaE_incCstack(arg_L: [*c]lua_State) callconv(.c) void {
     var L = arg_L;
     _ = &L;
     L.*.nCcalls +%= 1;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((L.*.nCcalls & @as(l_uint32, @bitCast(@as(c_int, 65535)))) >= @as(l_uint32, @bitCast(@as(c_int, 200)))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((L.*.nCcalls & @as(l_uint32, @bitCast(@as(c_int, 65535)))) >= @as(l_uint32, @bitCast(@as(c_int, 200)))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         luaE_checkcstack(L);
     }
 }
@@ -1841,14 +1841,14 @@ pub export fn luaE_resetthread(arg_L: [*c]lua_State, arg_status: c_int) c_int {
         status = 0;
     }
     L.*.status = 0;
-    status = luaD_closeprotected(L, @as(ptrdiff_t, @bitCast(@as(c_long, @as(c_int, 1)))), status);
+    status = luaD_closeprotected(L, @as(ptrdiff_t, @bitCast(@as(isize, @as(c_int, 1)))), status);
     if (status != @as(c_int, 0)) {
         luaD_seterrorobj(L, status, L.*.stack.p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))));
     } else {
         L.*.top.p = L.*.stack.p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))));
     }
     ci.*.top.p = L.*.top.p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 20)))));
-    _ = luaD_reallocstack(L, @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(ci.*.top.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))), @as(c_int, 0));
+    _ = luaD_reallocstack(L, @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(ci.*.top.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))), @as(c_int, 0));
     return status;
 }
 pub extern fn luaG_getfuncline(f: [*c]const Proto, pc: c_int) c_int;
@@ -2050,7 +2050,7 @@ pub fn luai_makeseed(arg_L: [*c]lua_State) callconv(.c) c_uint {
         p += @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(usize)))));
     }
     _ = @as(c_int, 0);
-    return luaS_hash(@as([*c]u8, @ptrCast(@alignCast(&buff[@as(usize, @intCast(0))]))), @as(usize, @bitCast(@as(c_long, p))), h);
+    return luaS_hash(@as([*c]u8, @ptrCast(@alignCast(&buff[@as(usize, @intCast(0))]))), @as(usize, @bitCast(@as(isize, p))), h);
 }
 pub fn stack_init(arg_L1: [*c]lua_State, arg_L: [*c]lua_State) callconv(.c) void {
     var L1 = arg_L1;
@@ -2061,7 +2061,7 @@ pub fn stack_init(arg_L1: [*c]lua_State, arg_L: [*c]lua_State) callconv(.c) void
     _ = &i;
     var ci: [*c]CallInfo = undefined;
     _ = &ci;
-    L1.*.stack.p = @as([*c]StackValue, @ptrCast(@alignCast(luaM_malloc_(L, @as(c_ulong, @bitCast(@as(c_long, (@as(c_int, 2) * @as(c_int, 20)) + @as(c_int, 5)))) *% @sizeOf(StackValue), @as(c_int, 0)))));
+    L1.*.stack.p = @as([*c]StackValue, @ptrCast(@alignCast(luaM_malloc_(L, @as(usize, @bitCast(@as(isize, (@as(c_int, 2) * @as(c_int, 20)) + @as(c_int, 5)))) *% @sizeOf(StackValue), @as(c_int, 0)))));
     L1.*.tbclist.p = L1.*.stack.p;
     {
         i = 0;
@@ -2101,7 +2101,7 @@ pub fn freestack(arg_L: [*c]lua_State) callconv(.c) void {
     L.*.ci = &L.*.base_ci;
     luaE_freeCI(L);
     _ = @as(c_int, 0);
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(L.*.stack.p)), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))) + @as(c_int, 5)))) *% @sizeOf(StackValue));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(L.*.stack.p)), @as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))) + @as(c_int, 5)))) *% @sizeOf(StackValue));
 }
 pub fn init_registry(arg_L: [*c]lua_State, arg_g: [*c]global_State) callconv(.c) void {
     var L = arg_L;
@@ -2249,14 +2249,14 @@ pub fn close_state(arg_L: [*c]lua_State) callconv(.c) void {
         luaC_freeallobjects(L);
     } else {
         L.*.ci = &L.*.base_ci;
-        _ = luaD_closeprotected(L, @as(ptrdiff_t, @bitCast(@as(c_long, @as(c_int, 1)))), @as(c_int, 0));
+        _ = luaD_closeprotected(L, @as(ptrdiff_t, @bitCast(@as(isize, @as(c_int, 1)))), @as(c_int, 0));
         luaC_freeallobjects(L);
         _ = &L;
     }
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(L.*.l_G.*.strt.hash)), @as(c_ulong, @bitCast(@as(c_long, L.*.l_G.*.strt.size))) *% @sizeOf([*c]TString));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(L.*.l_G.*.strt.hash)), @as(usize, @bitCast(@as(isize, L.*.l_G.*.strt.size))) *% @sizeOf([*c]TString));
     freestack(L);
     _ = @as(c_int, 0);
-    _ = g.*.frealloc.?(g.*.ud, @as(?*anyopaque, @ptrCast(@as([*c]LX, @ptrCast(@alignCast(@as([*c]lu_byte, @ptrCast(@alignCast(L))) - @offsetOf(struct_LX, "l")))))), @sizeOf(LG), @as(usize, @bitCast(@as(c_long, @as(c_int, 0)))));
+    _ = g.*.frealloc.?(g.*.ud, @as(?*anyopaque, @ptrCast(@as([*c]LX, @ptrCast(@alignCast(@as([*c]lu_byte, @ptrCast(@alignCast(L))) - @offsetOf(struct_LX, "l")))))), @sizeOf(LG), @as(usize, @bitCast(@as(isize, @as(c_int, 0)))));
 }
 pub const __llvm__ = @as(c_int, 1);
 pub const __clang__ = @as(c_int, 1);

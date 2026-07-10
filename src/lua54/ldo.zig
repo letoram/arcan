@@ -28,7 +28,7 @@ pub const __builtin_unreachable = c_builtins.__builtin_unreachable;
 pub const __builtin_assume = c_builtins.__builtin_assume;
 pub const __has_builtin = c_builtins.__has_builtin;
 // ---- C type aliases (needed by Lua type definitions and later declarations) ----
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const sig_atomic_t = c_int;
 pub const intmax_t = c_long;
 pub const uintmax_t = c_ulong;
@@ -52,7 +52,7 @@ pub extern fn _setjmp(buf: [*c]c_long) c_int;
 // ---- libc core (used by translated inline helpers) ----
 pub extern fn abort() noreturn;
 pub extern fn exit(status: c_int) noreturn;
-pub extern fn realloc(ptr: ?*anyopaque, size: c_ulong) ?*anyopaque;
+pub extern fn realloc(ptr: ?*anyopaque, size: usize) ?*anyopaque;
 
 // ---- va_list (used by lua_pushvfstring declarations) ----
 pub const struct___va_list_1 = extern struct {
@@ -64,12 +64,12 @@ pub const struct___va_list_1 = extern struct {
 };
 pub const __builtin_va_list = struct___va_list_1;
 // ---- memory/string (used by translated inline helpers) ----
-pub extern fn memset(?*anyopaque, c_int, c_ulong) ?*anyopaque;
-pub extern fn memmove(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memcpy(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
+pub extern fn memset(?*anyopaque, c_int, usize) ?*anyopaque;
+pub extern fn memmove(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
+pub extern fn memcpy(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
 pub extern fn strlen([*c]const u8) c_ulong;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
 
 // Freestanding-safe local implementations of libc functions
 fn _Exit(status: c_int) noreturn {
@@ -415,8 +415,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -448,8 +448,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -841,7 +841,7 @@ pub extern fn lua_load(L: [*c]lua_State, reader: lua_Reader, dt: ?*anyopaque, ch
 pub extern fn lua_dump(L: [*c]lua_State, writer: lua_Writer, data: ?*anyopaque, strip: c_int) c_int;
 pub export fn lua_yieldk(L: [*c]lua_State, nresults: c_int, ctx: lua_KContext, k: lua_KFunction) callconv(.c) c_int {
     const ci: [*c]CallInfo = L.*.ci;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!((L.*.nCcalls & @as(c_uint, 4294901760)) == @as(c_uint, @bitCast(@as(c_int, 0))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!((L.*.nCcalls & @as(c_uint, 4294901760)) == @as(c_uint, @bitCast(@as(c_int, 0))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         if (L != L.*.l_G.*.mainthread) {
             luaG_runerror(L, "attempt to yield across a C-call boundary");
         } else {
@@ -876,21 +876,21 @@ pub export fn lua_resume(L: [*c]lua_State, from: [*c]lua_State, arg_nargs: c_int
     var nargs = arg_nargs;
     var status: c_int = undefined;
     if (@as(c_int, @bitCast(@as(c_uint, L.*.status))) == 0) {
-        if (L.*.ci != (&L.*.base_ci)) return resume_error(L, "cannot resume non-suspended coroutine", nargs) else if (@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(L.*.ci.*.func.p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))))), @sizeOf(StackValue)) == @as(c_long, @bitCast(@as(c_long, nargs)))) return resume_error(L, "cannot resume dead coroutine", nargs);
+        if (L.*.ci != (&L.*.base_ci)) return resume_error(L, "cannot resume non-suspended coroutine", nargs) else if (@divExact(@as(isize, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(L.*.ci.*.func.p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))))), @sizeOf(StackValue)) == @as(isize, @bitCast(@as(isize, nargs)))) return resume_error(L, "cannot resume dead coroutine", nargs);
     } else if (@as(c_int, @bitCast(@as(c_uint, L.*.status))) != 1) return resume_error(L, "cannot resume dead coroutine", nargs);
     L.*.nCcalls = if (from != null) from.*.nCcalls & @as(l_uint32, @bitCast(@as(c_int, 65535))) else @as(l_uint32, @bitCast(@as(c_int, 0)));
     if ((L.*.nCcalls & @as(l_uint32, @bitCast(@as(c_int, 65535)))) >= @as(l_uint32, @bitCast(@as(c_int, 200)))) return resume_error(L, "C stack overflow", nargs);
     L.*.nCcalls +%= 1;
     status = luaD_rawrunprotected(L, &@"resume", @as(?*anyopaque, @ptrCast(&nargs)));
     status = precover(L, status);
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(status > 1)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(status > 1)) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) {
         // lua_assert — ok
     } else {
         L.*.status = @as(lu_byte, @bitCast(@as(i8, @truncate(status))));
         luaD_seterrorobj(L, status, L.*.top.p);
         L.*.ci.*.top.p = L.*.top.p;
     }
-    nresults.* = if (status == 1) L.*.ci.*.u2.nyield else @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(L.*.ci.*.func.p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))))), @sizeOf(StackValue))))));
+    nresults.* = if (status == 1) L.*.ci.*.u2.nyield else @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(L.*.ci.*.func.p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))))), @sizeOf(StackValue))))));
     return status;
 }
 pub extern fn lua_status(L: [*c]lua_State) c_int;
@@ -1410,7 +1410,7 @@ pub export fn luaD_seterrorobj(L: [*c]lua_State, errcode: c_int, oldtop: StkId) 
         },
         5 => {
             const io: [*c]TValue = &oldtop.*.val;
-            const x_: [*c]TString = luaS_newlstr(L, "error in error handling", (@sizeOf([24]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))));
+            const x_: [*c]TString = luaS_newlstr(L, "error in error handling", (@sizeOf([24]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))));
             io.*.value_.gc = &@as([*c]union_GCUnion, @ptrCast(@alignCast(x_))).*.gc;
             io.*.tt_ = @as(lu_byte, @bitCast(@as(i8, @truncate(@as(c_int, @bitCast(@as(c_uint, x_.*.tt))) | (@as(c_int, 1) << @intCast(6))))));
         },
@@ -1447,13 +1447,13 @@ pub export fn luaD_protectedparser(L: [*c]lua_State, z: [*c]ZIO, name: [*c]const
     p.dyd.label.arr = null;
     p.dyd.label.size = 0;
     p.buff.buffer = null;
-    p.buff.buffsize = @as(usize, @bitCast(@as(c_long, @as(c_int, 0))));
-    status = luaD_pcall(L, &f_parser, @as(?*anyopaque, @ptrCast(&p)), @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8)), L.*.errfunc);
-    p.buff.buffer = @as([*c]u8, @ptrCast(@alignCast(luaM_saferealloc_(L, @as(?*anyopaque, @ptrCast(p.buff.buffer)), p.buff.buffsize *% @sizeOf(u8), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 0)))) *% @sizeOf(u8)))));
-    p.buff.buffsize = @as(usize, @bitCast(@as(c_long, @as(c_int, 0))));
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(p.dyd.actvar.arr)), @as(c_ulong, @bitCast(@as(c_long, p.dyd.actvar.size))) *% @sizeOf(Vardesc));
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(p.dyd.gt.arr)), @as(c_ulong, @bitCast(@as(c_long, p.dyd.gt.size))) *% @sizeOf(Labeldesc));
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(p.dyd.label.arr)), @as(c_ulong, @bitCast(@as(c_long, p.dyd.label.size))) *% @sizeOf(Labeldesc));
+    p.buff.buffsize = @as(usize, @bitCast(@as(isize, @as(c_int, 0))));
+    status = luaD_pcall(L, &f_parser, @as(?*anyopaque, @ptrCast(&p)), @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8)), L.*.errfunc);
+    p.buff.buffer = @as([*c]u8, @ptrCast(@alignCast(luaM_saferealloc_(L, @as(?*anyopaque, @ptrCast(p.buff.buffer)), p.buff.buffsize *% @sizeOf(u8), @as(usize, @bitCast(@as(isize, @as(c_int, 0)))) *% @sizeOf(u8)))));
+    p.buff.buffsize = @as(usize, @bitCast(@as(isize, @as(c_int, 0))));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(p.dyd.actvar.arr)), @as(usize, @bitCast(@as(isize, p.dyd.actvar.size))) *% @sizeOf(Vardesc));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(p.dyd.gt.arr)), @as(usize, @bitCast(@as(isize, p.dyd.gt.size))) *% @sizeOf(Labeldesc));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(p.dyd.label.arr)), @as(usize, @bitCast(@as(isize, p.dyd.label.size))) *% @sizeOf(Labeldesc));
     L.*.nCcalls -%= @as(l_uint32, @bitCast(@as(c_int, 65536)));
     return status;
 }
@@ -1462,8 +1462,8 @@ pub export fn luaD_hook(L: [*c]lua_State, event: c_int, line: c_int, ftransfer: 
     if ((hook != null) and (@as(c_int, @bitCast(@as(c_uint, L.*.allowhook))) != 0)) {
         var mask: c_int = @as(c_int, 1) << @intCast(3);
         const ci: [*c]CallInfo = L.*.ci;
-        const top: ptrdiff_t = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
-        const ci_top: ptrdiff_t = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(ci.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+        const top: ptrdiff_t = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+        const ci_top: ptrdiff_t = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(ci.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
         var ar: lua_Debug = undefined;
         ar.event = event;
         ar.currentline = line;
@@ -1476,7 +1476,7 @@ pub export fn luaD_hook(L: [*c]lua_State, event: c_int, line: c_int, ftransfer: 
         if (!((@as(c_int, @bitCast(@as(c_uint, ci.*.callstatus))) & (@as(c_int, 1) << @intCast(1))) != 0) and (L.*.top.p < ci.*.top.p)) {
             L.*.top.p = ci.*.top.p;
         }
-        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @bitCast(@as(c_long, @as(c_int, 20))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(isize, @bitCast(@as(isize, @as(c_int, 20))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
             _ = luaD_growstack(L, 20, 1);
         }
         if (ci.*.top.p < (L.*.top.p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 20))))))) {
@@ -1531,11 +1531,11 @@ pub export fn luaD_pretailcall(arg_L: [*c]lua_State, arg_ci: [*c]CallInfo, arg_f
                 const fsize: c_int = @as(c_int, @bitCast(@as(c_uint, p.*.maxstacksize)));
                 const nfixparams: c_int = @as(c_int, @bitCast(@as(c_uint, p.*.numparams)));
                 // checkstackGCp(L, fsize - delta, func) — inline expansion
-                if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @bitCast(@as(c_long, fsize - delta)))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
-                    var t__: ptrdiff_t = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+                if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(isize, @bitCast(@as(isize, fsize - delta)))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
+                    var t__: ptrdiff_t = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
                     _ = &t__;
                     {
-                        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(isize, @as(c_int, 0))))) {
                             luaC_step(L);
                         }
                     }
@@ -1607,15 +1607,15 @@ pub export fn luaD_precall(arg_L: [*c]lua_State, arg_func: StkId, arg_nresults: 
                 var ci: [*c]CallInfo = undefined;
                 _ = &ci;
                 const p: [*c]Proto = (&@as([*c]union_GCUnion, @ptrCast(@alignCast((&func.*.val).*.value_.gc))).*.cl.l).*.p;
-                const narg: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(func))), @sizeOf(StackValue)))))) - @as(c_int, 1);
+                const narg: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(func))), @sizeOf(StackValue)))))) - @as(c_int, 1);
                 const nfixparams: c_int = @as(c_int, @bitCast(@as(c_uint, p.*.numparams)));
                 const fsize: c_int = @as(c_int, @bitCast(@as(c_uint, p.*.maxstacksize)));
                 // checkstackGCp(L, fsize, func) — inline expansion
-                if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @bitCast(@as(c_long, fsize)))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
-                    var t__: ptrdiff_t = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+                if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(isize, @bitCast(@as(isize, fsize)))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
+                    var t__: ptrdiff_t = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
                     _ = &t__;
                     {
-                        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(isize, @as(c_int, 0))))) {
                             luaC_step(L);
                         }
                     }
@@ -1658,16 +1658,16 @@ pub export fn luaD_tryfuncTM(L: [*c]lua_State, arg_func: StkId) StkId {
     var func = arg_func;
     var tm: [*c]const TValue = undefined;
     var p: StkId = undefined;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
-        const t__: ptrdiff_t = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
-        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @as(c_int, 1))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
+        const t__: ptrdiff_t = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(isize, @as(c_int, 0))))) {
             luaC_step(L);
         }
         _ = luaD_growstack(L, 1, 1);
         func = @as(StkId, @ptrFromInt(@intFromPtr(L.*.stack.p) + @as(usize, @bitCast(@as(isize, @intCast(t__))))));
     }
     tm = luaT_gettmbyobj(L, &func.*.val, @as(c_uint, @bitCast(TM_CALL)));
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((@as(c_int, @bitCast(@as(c_uint, tm.*.tt_))) & @as(c_int, 15)) == 0) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((@as(c_int, @bitCast(@as(c_uint, tm.*.tt_))) & @as(c_int, 15)) == 0) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         luaG_callerror(L, &func.*.val);
     }
     p = L.*.top.p;
@@ -1711,7 +1711,7 @@ pub export fn luaD_closeprotected(L: [*c]lua_State, level: ptrdiff_t, arg_status
         pcl.level = @as(StkId, @ptrFromInt(@intFromPtr(L.*.stack.p) + offset_bytes));
         pcl.status = status;
         status = luaD_rawrunprotected(L, &closepaux, @as(?*anyopaque, @ptrCast(&pcl)));
-        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(status == 0) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) return pcl.status else {
+        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(status == 0) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) return pcl.status else {
             L.*.ci = old_ci;
             L.*.allowhook = old_allowhooks;
         }
@@ -1725,7 +1725,7 @@ pub export fn luaD_pcall(L: [*c]lua_State, func: Pfunc, u: ?*anyopaque, old_top:
     const old_errfunc: ptrdiff_t = L.*.errfunc;
     L.*.errfunc = ef;
     status = luaD_rawrunprotected(L, func, u);
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(status != 0) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(status != 0) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         L.*.ci = old_ci;
         L.*.allowhook = old_allowhooks;
         status = luaD_closeprotected(L, old_top, status);
@@ -1744,21 +1744,21 @@ pub export fn luaD_pcall(L: [*c]lua_State, func: Pfunc, u: ?*anyopaque, old_top:
 }
 pub export fn luaD_poscall(L: [*c]lua_State, ci: [*c]CallInfo, nres: c_int) void {
     const wanted: c_int = @as(c_int, @bitCast(@as(c_int, ci.*.nresults)));
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((L.*.hookmask != 0) and !(wanted < -@as(c_int, 1))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((L.*.hookmask != 0) and !(wanted < -@as(c_int, 1))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         rethook(L, ci, nres);
     }
     moveresults(L, ci.*.func.p, nres, wanted);
     L.*.ci = ci.*.previous;
 }
 pub export fn luaD_reallocstack(L: [*c]lua_State, newsize: c_int, raiseerror: c_int) c_int {
-    const oldsize: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue))))));
+    const oldsize: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue))))));
     var newstack: StkId = undefined;
     const oldgcstop: c_int = @as(c_int, @bitCast(@as(c_uint, L.*.l_G.*.gcstopem)));
     relstack(L);
     L.*.l_G.*.gcstopem = 1;
-    newstack = @as([*c]StackValue, @ptrCast(@alignCast(luaM_realloc_(L, @as(?*anyopaque, @ptrCast(L.*.stack.p)), @as(usize, @bitCast(@as(c_long, oldsize + @as(c_int, 5)))) *% @sizeOf(StackValue), @as(usize, @bitCast(@as(c_long, newsize + @as(c_int, 5)))) *% @sizeOf(StackValue)))));
+    newstack = @as([*c]StackValue, @ptrCast(@alignCast(luaM_realloc_(L, @as(?*anyopaque, @ptrCast(L.*.stack.p)), @as(usize, @bitCast(@as(isize, oldsize + @as(c_int, 5)))) *% @sizeOf(StackValue), @as(usize, @bitCast(@as(isize, newsize + @as(c_int, 5)))) *% @sizeOf(StackValue)))));
     L.*.l_G.*.gcstopem = @as(lu_byte, @bitCast(@as(i8, @truncate(oldgcstop))));
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(newstack == @as(StkId, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(newstack == @as(StkId, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         correctstack(L);
         if (raiseerror != 0) {
             luaD_throw(L, 4);
@@ -1776,22 +1776,22 @@ pub export fn luaD_reallocstack(L: [*c]lua_State, newsize: c_int, raiseerror: c_
     return 1;
 }
 pub export fn luaD_growstack(L: [*c]lua_State, n: c_int, raiseerror: c_int) c_int {
-    const size: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue))))));
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(size > 1000000) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    const size: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue))))));
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(size > 1000000) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         if (raiseerror != 0) {
             luaD_throw(L, 5);
         }
         return 0;
     } else if (n < 1000000) {
         var newsize: c_int = 2 * size;
-        const needed: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))) + n;
+        const needed: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))) + n;
         if (newsize > 1000000) {
             newsize = 1000000;
         }
         if (newsize < needed) {
             newsize = needed;
         }
-        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(newsize <= 1000000) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) return luaD_reallocstack(L, newsize, raiseerror);
+        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(newsize <= 1000000) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) return luaD_reallocstack(L, newsize, raiseerror);
     }
     _ = luaD_reallocstack(L, 1000000 + 200, raiseerror);
     if (raiseerror != 0) {
@@ -1802,14 +1802,14 @@ pub export fn luaD_growstack(L: [*c]lua_State, n: c_int, raiseerror: c_int) c_in
 pub export fn luaD_shrinkstack(L: [*c]lua_State) void {
     const inuse: c_int = stackinuse(L);
     const max: c_int = if (inuse > @divTrunc(@as(c_int, 1000000), @as(c_int, 3))) 1000000 else inuse * 3;
-    if ((inuse <= 1000000) and (@as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))) > max)) {
+    if ((inuse <= 1000000) and (@as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))) > max)) {
         const nsize: c_int = if (inuse > @divTrunc(@as(c_int, 1000000), @as(c_int, 2))) 1000000 else inuse * 2;
         _ = luaD_reallocstack(L, nsize, 0);
     }
     luaE_shrinkCI(L);
 }
 pub export fn luaD_inctop(L: [*c]lua_State) void {
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @as(c_int, 1))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         _ = luaD_growstack(L, 1, 1);
     }
     L.*.top.p += 1;
@@ -1918,12 +1918,12 @@ pub fn relstack(arg_L: [*c]lua_State) callconv(.c) void {
     _ = &ci;
     var up: [*c]UpVal = undefined;
     _ = &up;
-    L.*.top.offset = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
-    L.*.tbclist.offset = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.tbclist.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+    L.*.top.offset = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+    L.*.tbclist.offset = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.tbclist.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
     {
         up = L.*.openupval;
         while (up != @as([*c]UpVal, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) : (up = up.*.u.open.next) {
-            up.*.v.offset = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(blk: {
+            up.*.v.offset = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(blk: {
                 _ = @as(c_int, 0);
                 break :blk @as(StkId, @ptrCast(@alignCast(up.*.v.p)));
             })))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
@@ -1932,8 +1932,8 @@ pub fn relstack(arg_L: [*c]lua_State) callconv(.c) void {
     {
         ci = L.*.ci;
         while (ci != @as([*c]CallInfo, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) : (ci = ci.*.previous) {
-            ci.*.top.offset = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(ci.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
-            ci.*.func.offset = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(ci.*.func.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+            ci.*.top.offset = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(ci.*.top.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+            ci.*.func.offset = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(ci.*.func.p)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
         }
     }
 }
@@ -1981,7 +1981,7 @@ pub fn stackinuse(arg_L: [*c]lua_State) callconv(.c) c_int {
         }
     }
     _ = @as(c_int, 0);
-    res = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(lim) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))) + @as(c_int, 1);
+    res = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(lim) -% @intFromPtr(L.*.stack.p))), @sizeOf(StackValue)))))) + @as(c_int, 1);
     if (res < @as(c_int, 20)) {
         res = 20;
     }
@@ -2015,7 +2015,7 @@ pub fn rethook(arg_L: [*c]lua_State, arg_ci: [*c]CallInfo, arg_nres: c_int) call
             }
         }
         ci.*.func.p += @as(usize, @bitCast(@as(isize, @intCast(delta))));
-        ftransfer = @as(c_int, @bitCast(@as(c_uint, @as(c_ushort, @bitCast(@as(c_short, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(firstres) -% @intFromPtr(ci.*.func.p))), @sizeOf(StackValue)))))))));
+        ftransfer = @as(c_int, @bitCast(@as(c_uint, @as(c_ushort, @bitCast(@as(c_short, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(firstres) -% @intFromPtr(ci.*.func.p))), @sizeOf(StackValue)))))))));
         luaD_hook(L, @as(c_int, 1), -@as(c_int, 1), ftransfer, nres);
         ci.*.func.p -= @as(usize, @bitCast(@as(isize, @intCast(delta))));
     }
@@ -2024,7 +2024,7 @@ pub fn rethook(arg_L: [*c]lua_State, arg_ci: [*c]CallInfo, arg_nres: c_int) call
         ci = tmp;
         break :blk tmp;
     }).*.callstatus))) & (@as(c_int, 1) << @intCast(1))) != 0)) {
-        L.*.oldpc = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(ci.*.u.l.savedpc) -% @intFromPtr((blk: {
+        L.*.oldpc = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(ci.*.u.l.savedpc) -% @intFromPtr((blk: {
             _ = @as(c_int, 0);
             break :blk blk_1: {
                 _ = @as(c_int, 0);
@@ -2096,7 +2096,7 @@ pub fn moveresults(arg_L: [*c]lua_State, arg_res: StkId, arg_nres: c_int, arg_wa
                     res = luaF_close(L, res, -@as(c_int, 1), @as(c_int, 1));
                     L.*.ci.*.callstatus &= @as(c_ushort, @bitCast(@as(c_short, @truncate(~(@as(c_int, 1) << @intCast(9))))));
                     if (L.*.hookmask != 0) {
-                        var savedres: ptrdiff_t = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(res)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+                        var savedres: ptrdiff_t = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(res)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
                         _ = &savedres;
                         rethook(L, L.*.ci, nres);
                         res = @as(StkId, @ptrFromInt(@intFromPtr(L.*.stack.p) + @as(usize, @bitCast(@as(isize, @intCast(savedres))))));
@@ -2186,11 +2186,11 @@ pub fn precallC(arg_L: [*c]lua_State, arg_func: StkId, arg_nresults: c_int, arg_
     _ = &n;
     var ci: [*c]CallInfo = undefined;
     _ = &ci;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @bitCast(@as(c_long, @as(c_int, 20))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
-        var t__: ptrdiff_t = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(isize, @bitCast(@as(isize, @as(c_int, 20))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
+        var t__: ptrdiff_t = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
         _ = &t__;
         {
-            if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(isize, @as(c_int, 0))))) {
                 _ = @as(c_int, 0);
                 luaC_step(L);
                 _ = @as(c_int, 0);
@@ -2208,8 +2208,8 @@ pub fn precallC(arg_L: [*c]lua_State, arg_func: StkId, arg_nresults: c_int, arg_
         break :blk tmp;
     };
     _ = @as(c_int, 0);
-    if (__builtin_expect(@as(c_long, @intFromBool((L.*.hookmask & (@as(c_int, 1) << @intCast(0))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
-        var narg: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(func))), @sizeOf(StackValue)))))) - @as(c_int, 1);
+    if (__builtin_expect(@as(c_long, @intFromBool((L.*.hookmask & (@as(c_int, 1) << @intCast(0))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
+        var narg: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.top.p) -% @intFromPtr(func))), @sizeOf(StackValue)))))) - @as(c_int, 1);
         _ = &narg;
         luaD_hook(L, @as(c_int, 0), -@as(c_int, 1), @as(c_int, 1), narg);
     }
@@ -2235,9 +2235,9 @@ pub fn ccall(arg_L: [*c]lua_State, arg_func: StkId, arg_nResults: c_int, arg_inc
     var ci: [*c]CallInfo = undefined;
     _ = &ci;
     L.*.nCcalls +%= inc;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((L.*.nCcalls & @as(l_uint32, @bitCast(@as(c_int, 65535)))) >= @as(l_uint32, @bitCast(@as(c_int, 200)))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
-        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(c_long, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
-            var t__: ptrdiff_t = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((L.*.nCcalls & @as(l_uint32, @bitCast(@as(c_int, 65535)))) >= @as(l_uint32, @bitCast(@as(c_int, 200)))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
+        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@divExact(@as(isize, @bitCast(@intFromPtr(L.*.stack_last.p) -% @intFromPtr(L.*.top.p))), @sizeOf(StackValue)) <= @as(c_long, @as(c_int, 0))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
+            var t__: ptrdiff_t = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(func)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
             _ = &t__;
             _ = luaD_growstack(L, @as(c_int, 0), @as(c_int, 1));
             func = @as(StkId, @ptrFromInt(@intFromPtr(L.*.stack.p) + @as(usize, @bitCast(@as(isize, @intCast(t__))))));
@@ -2263,7 +2263,7 @@ pub fn finishpcallk(arg_L: [*c]lua_State, arg_ci: [*c]CallInfo) callconv(.c) c_i
     _ = &ci;
     var status: c_int = (@as(c_int, @bitCast(@as(c_uint, ci.*.callstatus))) >> @intCast(10)) & @as(c_int, 7);
     _ = &status;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(status == @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(status == @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) {
         status = 1;
     } else {
         var func: StkId = @as(StkId, @ptrFromInt(@intFromPtr(L.*.stack.p) + @as(usize, @bitCast(@as(isize, @intCast(ci.*.u2.funcidx))))));
@@ -2495,7 +2495,7 @@ pub fn f_parser(arg_L: [*c]lua_State, arg_ud: ?*anyopaque) callconv(.c) void {
         const tmp = ref.*;
         ref.* -%= 1;
         break :blk tmp;
-    }) > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk: {
+    }) > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) @as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk: {
         const ref = &p.*.z.*.p;
         const tmp = ref.*;
         ref.* += 1;

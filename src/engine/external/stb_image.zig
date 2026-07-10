@@ -90,8 +90,8 @@ pub extern fn ftell(?*FILE) c_long;
 pub extern fn rewind(?*FILE) void;
 pub extern fn fgetpos(noalias ?*FILE, noalias [*c]fpos_t) c_int;
 pub extern fn fsetpos(?*FILE, [*c]const fpos_t) c_int;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fgetc(?*FILE) c_int;
 pub extern fn getc(?*FILE) c_int;
 pub extern fn getchar() c_int;
@@ -105,11 +105,11 @@ pub extern fn puts([*c]const u8) c_int;
 pub extern fn printf([*c]const u8, ...) c_int;
 pub extern fn fprintf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
 pub extern fn vprintf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn vfprintf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn sscanf(noalias [*c]const u8, noalias [*c]const u8, ...) c_int;
@@ -180,11 +180,11 @@ pub extern fn strtoll([*c]const u8, [*c][*c]u8, c_int) c_longlong;
 pub extern fn strtoull([*c]const u8, [*c][*c]u8, c_int) c_ulonglong;
 pub extern fn rand() c_int;
 pub extern fn srand(c_uint) void;
-pub extern fn malloc(c_ulong) ?*anyopaque;
-pub extern fn calloc(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
+pub extern fn malloc(usize) ?*anyopaque;
+pub extern fn calloc(usize, usize) ?*anyopaque;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
 pub extern fn free(?*anyopaque) void;
-pub extern fn aligned_alloc(c_ulong, c_ulong) ?*anyopaque;
+pub extern fn aligned_alloc(usize, usize) ?*anyopaque;
 pub extern fn abort() noreturn;
 pub extern fn atexit(?*const fn () callconv(.c) void) c_int;
 pub extern fn exit(c_int) noreturn;
@@ -254,7 +254,7 @@ pub extern fn mktemp([*c]u8) [*c]u8;
 pub extern fn mkstemps([*c]u8, c_int) c_int;
 pub extern fn mkostemps([*c]u8, c_int, c_int) c_int;
 pub extern fn valloc(usize) ?*anyopaque;
-pub extern fn memalign(c_ulong, c_ulong) ?*anyopaque;
+pub extern fn memalign(usize, usize) ?*anyopaque;
 pub extern fn getloadavg([*c]f64, c_int) c_int;
 pub extern fn clearenv() c_int;
 pub extern fn reallocarray(?*anyopaque, usize, usize) ?*anyopaque;
@@ -340,7 +340,7 @@ pub fn stbi_load_from_file(arg_f: ?*FILE, arg_x: [*c]c_int, arg_y: [*c]c_int, ar
     stbi__start_file(&s, f);
     result = stbi__load_and_postprocess_8bit(&s, x, y, comp, req_comp);
     if (result != null) {
-        _ = fseek(f, @as(c_long, @bitCast(@as(c_long, -@as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(s.img_buffer_end) -% @intFromPtr(s.img_buffer))), @sizeOf(stbi_uc))))))))), @as(c_int, 1));
+        _ = fseek(f, @as(isize, @bitCast(@as(isize, -@as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(s.img_buffer_end) -% @intFromPtr(s.img_buffer))), @sizeOf(stbi_uc))))))))), @as(c_int, 1));
     }
     return result;
 }
@@ -420,7 +420,7 @@ pub fn stbi_load_from_file_16(arg_f: ?*FILE, arg_x: [*c]c_int, arg_y: [*c]c_int,
     stbi__start_file(&s, f);
     result = stbi__load_and_postprocess_16bit(&s, x, y, comp, req_comp);
     if (result != null) {
-        _ = fseek(f, @as(c_long, @bitCast(@as(c_long, -@as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(s.img_buffer_end) -% @intFromPtr(s.img_buffer))), @sizeOf(stbi_uc))))))))), @as(c_int, 1));
+        _ = fseek(f, @as(isize, @bitCast(@as(isize, -@as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(s.img_buffer_end) -% @intFromPtr(s.img_buffer))), @sizeOf(stbi_uc))))))))), @as(c_int, 1));
     }
     return result;
 }
@@ -721,14 +721,14 @@ pub fn stbi_zlib_decode_malloc_guesssize(arg_buffer: [*c]const u8, arg_len: c_in
     _ = &outlen;
     var a: stbi__zbuf = undefined;
     _ = &a;
-    var p: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(c_long, initial_size)))))));
+    var p: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(isize, initial_size)))))));
     _ = &p;
     if (p == @as([*c]u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return null;
     a.zbuffer = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(buffer))));
     a.zbuffer_end = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(buffer)))) + @as(usize, @bitCast(@as(isize, @intCast(len))));
     if (stbi__do_zlib(&a, p, initial_size, @as(c_int, 1), @as(c_int, 1)) != 0) {
         if (outlen != null) {
-            outlen.* = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8))))));
+            outlen.* = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8))))));
         }
         return a.zout_start;
     } else {
@@ -750,14 +750,14 @@ pub fn stbi_zlib_decode_malloc_guesssize_headerflag(arg_buffer: [*c]const u8, ar
     _ = &parse_header;
     var a: stbi__zbuf = undefined;
     _ = &a;
-    var p: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(c_long, initial_size)))))));
+    var p: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(isize, initial_size)))))));
     _ = &p;
     if (p == @as([*c]u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return null;
     a.zbuffer = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(buffer))));
     a.zbuffer_end = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(buffer)))) + @as(usize, @bitCast(@as(isize, @intCast(len))));
     if (stbi__do_zlib(&a, p, initial_size, @as(c_int, 1), parse_header) != 0) {
         if (outlen != null) {
-            outlen.* = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8))))));
+            outlen.* = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8))))));
         }
         return a.zout_start;
     } else {
@@ -788,7 +788,7 @@ pub fn stbi_zlib_decode_buffer(arg_obuffer: [*c]u8, arg_olen: c_int, arg_ibuffer
     _ = &a;
     a.zbuffer = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(ibuffer))));
     a.zbuffer_end = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(ibuffer)))) + @as(usize, @bitCast(@as(isize, @intCast(ilen))));
-    if (stbi__do_zlib(&a, obuffer, olen, @as(c_int, 0), @as(c_int, 1)) != 0) return @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8)))))) else return -@as(c_int, 1);
+    if (stbi__do_zlib(&a, obuffer, olen, @as(c_int, 0), @as(c_int, 1)) != 0) return @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8)))))) else return -@as(c_int, 1);
     return 0;
 }
 pub fn stbi_zlib_decode_noheader_malloc(arg_buffer: [*c]const u8, arg_len: c_int, arg_outlen: [*c]c_int) callconv(.c) [*c]u8 {
@@ -800,14 +800,14 @@ pub fn stbi_zlib_decode_noheader_malloc(arg_buffer: [*c]const u8, arg_len: c_int
     _ = &outlen;
     var a: stbi__zbuf = undefined;
     _ = &a;
-    var p: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(c_long, @as(c_int, 16384))))))));
+    var p: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(isize, @as(c_int, 16384))))))));
     _ = &p;
     if (p == @as([*c]u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return null;
     a.zbuffer = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(buffer))));
     a.zbuffer_end = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(buffer)))) + @as(usize, @bitCast(@as(isize, @intCast(len))));
     if (stbi__do_zlib(&a, p, @as(c_int, 16384), @as(c_int, 1), @as(c_int, 0)) != 0) {
         if (outlen != null) {
-            outlen.* = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8))))));
+            outlen.* = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8))))));
         }
         return a.zout_start;
     } else {
@@ -829,30 +829,30 @@ pub fn stbi_zlib_decode_noheader_buffer(arg_obuffer: [*c]u8, arg_olen: c_int, ar
     _ = &a;
     a.zbuffer = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(ibuffer))));
     a.zbuffer_end = @as([*c]stbi_uc, @ptrCast(@constCast(@volatileCast(ibuffer)))) + @as(usize, @bitCast(@as(isize, @intCast(ilen))));
-    if (stbi__do_zlib(&a, obuffer, olen, @as(c_int, 0), @as(c_int, 0)) != 0) return @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8)))))) else return -@as(c_int, 1);
+    if (stbi__do_zlib(&a, obuffer, olen, @as(c_int, 0), @as(c_int, 0)) != 0) return @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(a.zout) -% @intFromPtr(a.zout_start))), @sizeOf(u8)))))) else return -@as(c_int, 1);
     return 0;
 }
 pub const __gnuc_va_list = __builtin_va_list;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const max_align_t = extern struct {
     __clang_max_align_nonce1: c_longlong align(8) = @import("std").mem.zeroes(c_longlong),
     __clang_max_align_nonce2: c_longdouble align(16) = @import("std").mem.zeroes(c_longdouble),
 };
 pub const struct___locale_struct = opaque {};
 pub const locale_t = ?*struct___locale_struct;
-pub extern fn memcpy(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memmove(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memset(?*anyopaque, c_int, c_ulong) ?*anyopaque;
-pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
-pub extern fn memchr(?*const anyopaque, c_int, c_ulong) ?*anyopaque;
+pub extern fn memcpy(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
+pub extern fn memmove(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
+pub extern fn memset(?*anyopaque, c_int, usize) ?*anyopaque;
+pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
+pub extern fn memchr(?*const anyopaque, c_int, usize) ?*anyopaque;
 pub extern fn strcpy([*c]u8, [*c]const u8) [*c]u8;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strcat([*c]u8, [*c]const u8) [*c]u8;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strcmp([*c]const u8, [*c]const u8) c_int;
-pub extern fn strncmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn strcoll([*c]const u8, [*c]const u8) c_int;
-pub extern fn strxfrm([*c]u8, [*c]const u8, c_ulong) c_ulong;
+pub extern fn strxfrm([*c]u8, [*c]const u8, usize) usize;
 pub extern fn strchr([*c]const u8, c_int) [*c]u8;
 pub extern fn strrchr([*c]const u8, c_int) [*c]u8;
 pub extern fn strcspn([*c]const u8, [*c]const u8) c_ulong;
@@ -862,25 +862,25 @@ pub extern fn strstr([*c]const u8, [*c]const u8) [*c]u8;
 pub extern fn strtok([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn strlen([*c]const u8) c_ulong;
 pub extern fn strerror(c_int) [*c]u8;
-pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
-pub extern fn bcopy(?*const anyopaque, ?*anyopaque, c_ulong) void;
-pub extern fn bzero(?*anyopaque, c_ulong) void;
+pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
+pub extern fn bcopy(?*const anyopaque, ?*anyopaque, usize) void;
+pub extern fn bzero(?*anyopaque, usize) void;
 pub extern fn index([*c]const u8, c_int) [*c]u8;
 pub extern fn rindex([*c]const u8, c_int) [*c]u8;
 pub extern fn ffs(c_int) c_int;
 pub extern fn ffsl(c_long) c_int;
 pub extern fn ffsll(c_longlong) c_int;
 pub extern fn strcasecmp([*c]const u8, [*c]const u8) c_int;
-pub extern fn strncasecmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncasecmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn strcasecmp_l([*c]const u8, [*c]const u8, locale_t) c_int;
 pub extern fn strncasecmp_l([*c]const u8, [*c]const u8, usize, locale_t) c_int;
 pub extern fn strtok_r(noalias [*c]u8, noalias [*c]const u8, noalias [*c][*c]u8) [*c]u8;
 pub extern fn strerror_r(c_int, [*c]u8, usize) c_int;
 pub extern fn stpcpy([*c]u8, [*c]const u8) [*c]u8;
-pub extern fn stpncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn stpncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strnlen([*c]const u8, usize) usize;
 pub extern fn strdup([*c]const u8) [*c]u8;
-pub extern fn strndup([*c]const u8, c_ulong) [*c]u8;
+pub extern fn strndup([*c]const u8, usize) [*c]u8;
 pub extern fn strsignal(c_int) [*c]u8;
 pub extern fn strerror_l(c_int, locale_t) [*c]u8;
 pub extern fn strcoll_l([*c]const u8, [*c]const u8, locale_t) c_int;
@@ -888,8 +888,8 @@ pub extern fn strxfrm_l(noalias [*c]u8, noalias [*c]const u8, usize, locale_t) u
 pub extern fn memmem(?*const anyopaque, usize, ?*const anyopaque, usize) ?*anyopaque;
 pub extern fn memccpy(?*anyopaque, ?*const anyopaque, c_int, c_ulong) ?*anyopaque;
 pub extern fn strsep([*c][*c]u8, [*c]const u8) [*c]u8;
-pub extern fn strlcat([*c]u8, [*c]const u8, c_ulong) c_ulong;
-pub extern fn strlcpy([*c]u8, [*c]const u8, c_ulong) c_ulong;
+pub extern fn strlcat([*c]u8, [*c]const u8, usize) usize;
+pub extern fn strlcpy([*c]u8, [*c]const u8, usize) usize;
 pub extern fn explicit_bzero(?*anyopaque, usize) void;
 pub const float_t = f32;
 pub const double_t = f64;
@@ -1313,7 +1313,7 @@ pub fn stbi__refill_buffer(arg_s: [*c]stbi__context) callconv(.c) void {
     _ = &s;
     var n: c_int = s.*.io.read.?(s.*.io_user_data, @as([*c]u8, @ptrCast(@alignCast(@as([*c]stbi_uc, @ptrCast(@alignCast(&s.*.buffer_start[@as(usize, @intCast(0))])))))), s.*.buflen);
     _ = &n;
-    s.*.callback_already_read += @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(s.*.img_buffer) -% @intFromPtr(s.*.img_buffer_original))), @sizeOf(stbi_uc))))));
+    s.*.callback_already_read += @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(s.*.img_buffer) -% @intFromPtr(s.*.img_buffer_original))), @sizeOf(stbi_uc))))));
     if (n == @as(c_int, 0)) {
         s.*.read_from_callbacks = 0;
         s.*.img_buffer = @as([*c]stbi_uc, @ptrCast(@alignCast(&s.*.buffer_start[@as(usize, @intCast(0))])));
@@ -1372,7 +1372,7 @@ pub fn stbi__stdio_read(arg_user: ?*anyopaque, arg_data: [*c]u8, arg_size: c_int
     _ = &data;
     var size = arg_size;
     _ = &size;
-    return @as(c_int, @bitCast(@as(c_uint, @truncate(fread(@as(?*anyopaque, @ptrCast(data)), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))), @as(c_ulong, @bitCast(@as(c_long, size))), @as(?*FILE, @ptrCast(user)))))));
+    return @as(c_int, @bitCast(@as(c_uint, @truncate(fread(@as(?*anyopaque, @ptrCast(data)), @as(usize, @bitCast(@as(isize, @as(c_int, 1)))), @as(usize, @bitCast(@as(isize, size))), @as(?*FILE, @ptrCast(user)))))));
 }
 pub fn stbi__stdio_skip(arg_user: ?*anyopaque, arg_n: c_int) callconv(.c) void {
     var user = arg_user;
@@ -1381,7 +1381,7 @@ pub fn stbi__stdio_skip(arg_user: ?*anyopaque, arg_n: c_int) callconv(.c) void {
     _ = &n;
     var ch: c_int = undefined;
     _ = &ch;
-    _ = fseek(@as(?*FILE, @ptrCast(user)), @as(c_long, @bitCast(@as(c_long, n))), @as(c_int, 1));
+    _ = fseek(@as(?*FILE, @ptrCast(user)), @as(isize, @bitCast(@as(isize, n))), @as(c_int, 1));
     ch = fgetc(@as(?*FILE, @ptrCast(user)));
     if (ch != -@as(c_int, 1)) {
         _ = ungetc(ch, @as(?*FILE, @ptrCast(user)));
@@ -1598,7 +1598,7 @@ pub fn stbi__malloc_mad2(arg_a: c_int, arg_b: c_int, arg_add: c_int) callconv(.c
     var add = arg_add;
     _ = &add;
     if (!(stbi__mad2sizes_valid(a, b, add) != 0)) return @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)));
-    return stbi__malloc(@as(usize, @bitCast(@as(c_long, (a * b) + add))));
+    return stbi__malloc(@as(usize, @bitCast(@as(isize, (a * b) + add))));
 }
 pub fn stbi__malloc_mad3(arg_a: c_int, arg_b: c_int, arg_c: c_int, arg_add: c_int) callconv(.c) ?*anyopaque {
     var a = arg_a;
@@ -1610,7 +1610,7 @@ pub fn stbi__malloc_mad3(arg_a: c_int, arg_b: c_int, arg_c: c_int, arg_add: c_in
     var add = arg_add;
     _ = &add;
     if (!(stbi__mad3sizes_valid(a, b, c, add) != 0)) return @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)));
-    return stbi__malloc(@as(usize, @bitCast(@as(c_long, ((a * b) * c) + add))));
+    return stbi__malloc(@as(usize, @bitCast(@as(isize, ((a * b) * c) + add))));
 }
 pub fn stbi__malloc_mad4(arg_a: c_int, arg_b: c_int, arg_c: c_int, arg_d: c_int, arg_add: c_int) callconv(.c) ?*anyopaque {
     var a = arg_a;
@@ -1624,7 +1624,7 @@ pub fn stbi__malloc_mad4(arg_a: c_int, arg_b: c_int, arg_c: c_int, arg_d: c_int,
     var add = arg_add;
     _ = &add;
     if (!(stbi__mad4sizes_valid(a, b, c, d, add) != 0)) return @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)));
-    return stbi__malloc(@as(usize, @bitCast(@as(c_long, (((a * b) * c) * d) + add))));
+    return stbi__malloc(@as(usize, @bitCast(@as(isize, (((a * b) * c) * d) + add))));
 }
 pub fn stbi__addints_valid(arg_a: c_int, arg_b: c_int) callconv(.c) c_int {
     var a = arg_a;
@@ -1749,7 +1749,7 @@ pub fn stbi__convert_16_to_8(arg_orig: [*c]stbi__uint16, arg_w: c_int, arg_h: c_
     _ = &img_len;
     var reduced: [*c]stbi_uc = undefined;
     _ = &reduced;
-    reduced = @as([*c]stbi_uc, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(c_long, img_len)))))));
+    reduced = @as([*c]stbi_uc, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(isize, img_len)))))));
     if (reduced == @as([*c]stbi_uc, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return @as([*c]u8, @ptrFromInt(@as(usize, @intCast(@intFromPtr(if (false) @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))) else @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))));
     {
         i = 0;
@@ -1781,7 +1781,7 @@ pub fn stbi__convert_8_to_16(arg_orig: [*c]stbi_uc, arg_w: c_int, arg_h: c_int, 
     _ = &img_len;
     var enlarged: [*c]stbi__uint16 = undefined;
     _ = &enlarged;
-    enlarged = @as([*c]stbi__uint16, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(c_long, img_len * @as(c_int, 2))))))));
+    enlarged = @as([*c]stbi__uint16, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(isize, img_len * @as(c_int, 2))))))));
     if (enlarged == @as([*c]stbi__uint16, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return @as([*c]stbi__uint16, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(@intFromPtr(if (false) @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))) else @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))))))))));
     {
         i = 0;
@@ -1812,7 +1812,7 @@ pub fn stbi__vertical_flip(arg_image: ?*anyopaque, arg_w: c_int, arg_h: c_int, a
     _ = &bytes_per_pixel;
     var row: c_int = undefined;
     _ = &row;
-    var bytes_per_row: usize = @as(usize, @bitCast(@as(c_long, w))) *% @as(usize, @bitCast(@as(c_long, bytes_per_pixel)));
+    var bytes_per_row: usize = @as(usize, @bitCast(@as(isize, w))) *% @as(usize, @bitCast(@as(isize, bytes_per_pixel)));
     _ = &bytes_per_row;
     var temp: [2048]stbi_uc = undefined;
     _ = &temp;
@@ -1821,9 +1821,9 @@ pub fn stbi__vertical_flip(arg_image: ?*anyopaque, arg_w: c_int, arg_h: c_int, a
     {
         row = 0;
         while (row < (h >> @intCast(1))) : (row += 1) {
-            var row0: [*c]stbi_uc = bytes + (@as(usize, @bitCast(@as(c_long, row))) *% bytes_per_row);
+            var row0: [*c]stbi_uc = bytes + (@as(usize, @bitCast(@as(isize, row))) *% bytes_per_row);
             _ = &row0;
-            var row1: [*c]stbi_uc = bytes + (@as(usize, @bitCast(@as(c_long, (h - row) - @as(c_int, 1)))) *% bytes_per_row);
+            var row1: [*c]stbi_uc = bytes + (@as(usize, @bitCast(@as(isize, (h - row) - @as(c_int, 1)))) *% bytes_per_row);
             _ = &row1;
             var bytes_left: usize = bytes_per_row;
             _ = &bytes_left;
@@ -1867,7 +1867,7 @@ pub fn stbi__load_and_postprocess_8bit(arg_s: [*c]stbi__context, arg_x: [*c]c_in
     if ((if (stbi__vertically_flip_on_load_set != 0) stbi__vertically_flip_on_load_local else stbi__vertically_flip_on_load_global) != 0) {
         var channels: c_int = if (req_comp != 0) req_comp else comp.*;
         _ = &channels;
-        stbi__vertical_flip(result, x.*, y.*, @as(c_int, @bitCast(@as(c_uint, @truncate(@as(c_ulong, @bitCast(@as(c_long, channels))) *% @sizeOf(stbi_uc))))));
+        stbi__vertical_flip(result, x.*, y.*, @as(c_int, @bitCast(@as(c_uint, @truncate(@as(usize, @bitCast(@as(isize, channels))) *% @sizeOf(stbi_uc))))));
     }
     return @as([*c]u8, @ptrCast(@alignCast(result)));
 }
@@ -1898,7 +1898,7 @@ pub fn stbi__load_and_postprocess_16bit(arg_s: [*c]stbi__context, arg_x: [*c]c_i
     if ((if (stbi__vertically_flip_on_load_set != 0) stbi__vertically_flip_on_load_local else stbi__vertically_flip_on_load_global) != 0) {
         var channels: c_int = if (req_comp != 0) req_comp else comp.*;
         _ = &channels;
-        stbi__vertical_flip(result, x.*, y.*, @as(c_int, @bitCast(@as(c_uint, @truncate(@as(c_ulong, @bitCast(@as(c_long, channels))) *% @sizeOf(stbi__uint16))))));
+        stbi__vertical_flip(result, x.*, y.*, @as(c_int, @bitCast(@as(c_uint, @truncate(@as(usize, @bitCast(@as(isize, channels))) *% @sizeOf(stbi__uint16))))));
     }
     return @as([*c]stbi__uint16, @ptrCast(@alignCast(result)));
 }
@@ -1977,7 +1977,7 @@ pub fn stbi__skip(arg_s: [*c]stbi__context, arg_n: c_int) callconv(.c) void {
         return;
     }
     if (s.*.io.read != null) {
-        var blen: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(s.*.img_buffer_end) -% @intFromPtr(s.*.img_buffer))), @sizeOf(stbi_uc))))));
+        var blen: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(s.*.img_buffer_end) -% @intFromPtr(s.*.img_buffer))), @sizeOf(stbi_uc))))));
         _ = &blen;
         if (blen < n) {
             s.*.img_buffer = s.*.img_buffer_end;
@@ -1995,14 +1995,14 @@ pub fn stbi__getn(arg_s: [*c]stbi__context, arg_buffer: [*c]stbi_uc, arg_n: c_in
     var n = arg_n;
     _ = &n;
     if (s.*.io.read != null) {
-        var blen: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(s.*.img_buffer_end) -% @intFromPtr(s.*.img_buffer))), @sizeOf(stbi_uc))))));
+        var blen: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(s.*.img_buffer_end) -% @intFromPtr(s.*.img_buffer))), @sizeOf(stbi_uc))))));
         _ = &blen;
         if (blen < n) {
             var res: c_int = undefined;
             _ = &res;
             var count: c_int = undefined;
             _ = &count;
-            _ = memcpy(@as(?*anyopaque, @ptrCast(buffer)), @as(?*const anyopaque, @ptrCast(s.*.img_buffer)), @as(c_ulong, @bitCast(@as(c_long, blen))));
+            _ = memcpy(@as(?*anyopaque, @ptrCast(buffer)), @as(?*const anyopaque, @ptrCast(s.*.img_buffer)), @as(usize, @bitCast(@as(isize, blen))));
             count = s.*.io.read.?(s.*.io_user_data, @as([*c]u8, @ptrCast(@alignCast(buffer))) + @as(usize, @bitCast(@as(isize, @intCast(blen)))), n - blen);
             res = @intFromBool(count == (n - blen));
             s.*.img_buffer = s.*.img_buffer_end;
@@ -2010,7 +2010,7 @@ pub fn stbi__getn(arg_s: [*c]stbi__context, arg_buffer: [*c]stbi_uc, arg_n: c_in
         }
     }
     if ((s.*.img_buffer + @as(usize, @bitCast(@as(isize, @intCast(n))))) <= s.*.img_buffer_end) {
-        _ = memcpy(@as(?*anyopaque, @ptrCast(buffer)), @as(?*const anyopaque, @ptrCast(s.*.img_buffer)), @as(c_ulong, @bitCast(@as(c_long, n))));
+        _ = memcpy(@as(?*anyopaque, @ptrCast(buffer)), @as(?*const anyopaque, @ptrCast(s.*.img_buffer)), @as(usize, @bitCast(@as(isize, n))));
         s.*.img_buffer += @as(usize, @bitCast(@as(isize, @intCast(n))));
         return 1;
     } else return 0;
@@ -2441,7 +2441,7 @@ pub fn stbi__convert_format16(arg_data: [*c]stbi__uint16, arg_img_n: c_int, arg_
         __assert_fail("req_comp >= 1 && req_comp <= 4", "/home/x/next/arcan/src/engine/external/stb_image.h", @as(c_int, 1818), "stbi__convert_format16");
         break :blk @as(c_int, 0);
     }) != 0);
-    good = @as([*c]stbi__uint16, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(c_ulong, ((@as(c_uint, @bitCast(req_comp)) *% x) *% y) *% @as(c_uint, @bitCast(@as(c_int, 2))))))))));
+    good = @as([*c]stbi__uint16, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(usize, ((@as(c_uint, @bitCast(req_comp)) *% x) *% y) *% @as(c_uint, @bitCast(@as(c_int, 2))))))))));
     if (good == @as([*c]stbi__uint16, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) {
         free(@as(?*anyopaque, @ptrCast(data)));
         return @as([*c]stbi__uint16, @ptrCast(@alignCast(@as([*c]u8, @ptrFromInt(@as(usize, @intCast(@intFromPtr(if (false) @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))) else @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))))))))));
@@ -2913,7 +2913,7 @@ pub fn stbi__build_huffman(arg_h: [*c]stbi__huffman, arg_count: [*c]c_int) callc
         }
     }
     h.*.maxcode[@as(c_uint, @intCast(j))] = 4294967295;
-    _ = memset(@as(?*anyopaque, @ptrCast(@as([*c]stbi_uc, @ptrCast(@alignCast(&h.*.fast[@as(usize, @intCast(0))]))))), @as(c_int, 255), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1) << @intCast(9)))));
+    _ = memset(@as(?*anyopaque, @ptrCast(@as([*c]stbi_uc, @ptrCast(@alignCast(&h.*.fast[@as(usize, @intCast(0))]))))), @as(c_int, 255), @as(usize, @bitCast(@as(isize, @as(c_int, 1) << @intCast(9)))));
     {
         i = 0;
         while (i < k) : (i += 1) {
@@ -3243,7 +3243,7 @@ pub fn stbi__jpeg_decode_block(arg_j: [*c]stbi__jpeg, arg_data: [*c]c_short, arg
     }
     t = stbi__jpeg_huff_decode(j, hdc);
     if ((t < @as(c_int, 0)) or (t > @as(c_int, 15))) return 0;
-    _ = memset(@as(?*anyopaque, @ptrCast(data)), @as(c_int, 0), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 64)))) *% @sizeOf(c_short));
+    _ = memset(@as(?*anyopaque, @ptrCast(data)), @as(c_int, 0), @as(usize, @bitCast(@as(isize, @as(c_int, 64)))) *% @sizeOf(c_short));
     diff = if (t != 0) stbi__extend_receive(j, t) else @as(c_int, 0);
     if (!(stbi__addints_valid(j.*.img_comp[@as(c_uint, @intCast(b))].dc_pred, diff) != 0)) return 0;
     dc = j.*.img_comp[@as(c_uint, @intCast(b))].dc_pred + diff;
@@ -3325,7 +3325,7 @@ pub fn stbi__jpeg_decode_block_prog_dc(arg_j: [*c]stbi__jpeg, arg_data: [*c]c_sh
         stbi__grow_buffer_unsafe(j);
     }
     if (j.*.succ_high == @as(c_int, 0)) {
-        _ = memset(@as(?*anyopaque, @ptrCast(data)), @as(c_int, 0), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 64)))) *% @sizeOf(c_short));
+        _ = memset(@as(?*anyopaque, @ptrCast(data)), @as(c_int, 0), @as(usize, @bitCast(@as(isize, @as(c_int, 64)))) *% @sizeOf(c_short));
         t = stbi__jpeg_huff_decode(j, hdc);
         if ((t < @as(c_int, 0)) or (t > @as(c_int, 15))) return 0;
         diff = if (t != 0) stbi__extend_receive(j, t) else @as(c_int, 0);
@@ -4403,13 +4403,13 @@ pub fn stbi__process_frame_header(arg_z: [*c]stbi__jpeg, arg_scan: c_int) callco
             z.*.img_comp[@as(c_uint, @intCast(i))].linebuf = null;
             z.*.img_comp[@as(c_uint, @intCast(i))].raw_data = stbi__malloc_mad2(z.*.img_comp[@as(c_uint, @intCast(i))].w2, z.*.img_comp[@as(c_uint, @intCast(i))].h2, @as(c_int, 15));
             if (z.*.img_comp[@as(c_uint, @intCast(i))].raw_data == @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))) return stbi__free_jpeg_components(z, i + @as(c_int, 1), @as(c_int, 0));
-            z.*.img_comp[@as(c_uint, @intCast(i))].data = @as([*c]stbi_uc, @ptrFromInt((@as(usize, @intCast(@intFromPtr(z.*.img_comp[@as(c_uint, @intCast(i))].raw_data))) +% @as(usize, @bitCast(@as(c_long, @as(c_int, 15))))) & @as(usize, @bitCast(@as(c_long, ~@as(c_int, 15))))));
+            z.*.img_comp[@as(c_uint, @intCast(i))].data = @as([*c]stbi_uc, @ptrFromInt((@as(usize, @intCast(@intFromPtr(z.*.img_comp[@as(c_uint, @intCast(i))].raw_data))) +% @as(usize, @bitCast(@as(isize, @as(c_int, 15))))) & @as(usize, @bitCast(@as(isize, ~@as(c_int, 15))))));
             if (z.*.progressive != 0) {
                 z.*.img_comp[@as(c_uint, @intCast(i))].coeff_w = @divTrunc(z.*.img_comp[@as(c_uint, @intCast(i))].w2, @as(c_int, 8));
                 z.*.img_comp[@as(c_uint, @intCast(i))].coeff_h = @divTrunc(z.*.img_comp[@as(c_uint, @intCast(i))].h2, @as(c_int, 8));
                 z.*.img_comp[@as(c_uint, @intCast(i))].raw_coeff = stbi__malloc_mad3(z.*.img_comp[@as(c_uint, @intCast(i))].w2, z.*.img_comp[@as(c_uint, @intCast(i))].h2, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(c_short))))), @as(c_int, 15));
                 if (z.*.img_comp[@as(c_uint, @intCast(i))].raw_coeff == @as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))) return stbi__free_jpeg_components(z, i + @as(c_int, 1), @as(c_int, 0));
-                z.*.img_comp[@as(c_uint, @intCast(i))].coeff = @as([*c]c_short, @ptrFromInt((@as(usize, @intCast(@intFromPtr(z.*.img_comp[@as(c_uint, @intCast(i))].raw_coeff))) +% @as(usize, @bitCast(@as(c_long, @as(c_int, 15))))) & @as(usize, @bitCast(@as(c_long, ~@as(c_int, 15))))));
+                z.*.img_comp[@as(c_uint, @intCast(i))].coeff = @as([*c]c_short, @ptrFromInt((@as(usize, @intCast(@intFromPtr(z.*.img_comp[@as(c_uint, @intCast(i))].raw_coeff))) +% @as(usize, @bitCast(@as(isize, @as(c_int, 15))))) & @as(usize, @bitCast(@as(isize, ~@as(c_int, 15))))));
             }
         }
     }
@@ -4870,7 +4870,7 @@ pub fn load_jpeg_image(arg_z: [*c]stbi__jpeg, arg_out_x: [*c]c_int, arg_out_y: [
             while (k < decode_n) : (k += 1) {
                 var r: [*c]stbi__resample = &res_comp[@as(c_uint, @intCast(k))];
                 _ = &r;
-                z.*.img_comp[@as(c_uint, @intCast(k))].linebuf = @as([*c]stbi_uc, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(c_ulong, z.*.s.*.img_x +% @as(stbi__uint32, @bitCast(@as(c_int, 3))))))))));
+                z.*.img_comp[@as(c_uint, @intCast(k))].linebuf = @as([*c]stbi_uc, @ptrCast(@alignCast(stbi__malloc(@as(usize, @bitCast(@as(usize, z.*.s.*.img_x +% @as(stbi__uint32, @bitCast(@as(c_int, 3))))))))));
                 if (!(z.*.img_comp[@as(c_uint, @intCast(k))].linebuf != null)) {
                     stbi__cleanup_jpeg(z);
                     return @as([*c]u8, @ptrFromInt(@as(usize, @intCast(@intFromPtr(if (false) @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))) else @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))));
@@ -5349,9 +5349,9 @@ pub fn stbi__zexpand(arg_z: [*c]stbi__zbuf, arg_zout: [*c]u8, arg_n: c_int) call
     _ = &old_limit;
     z.*.zout = zout;
     if (!(z.*.z_expandable != 0)) return 0;
-    cur = @as(c_uint, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(z.*.zout) -% @intFromPtr(z.*.zout_start))), @sizeOf(u8))))));
+    cur = @as(c_uint, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(z.*.zout) -% @intFromPtr(z.*.zout_start))), @sizeOf(u8))))));
     limit = blk: {
-        const tmp = @as(c_uint, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(z.*.zout_end) -% @intFromPtr(z.*.zout_start))), @sizeOf(u8))))));
+        const tmp = @as(c_uint, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(z.*.zout_end) -% @intFromPtr(z.*.zout_start))), @sizeOf(u8))))));
         old_limit = tmp;
         break :blk tmp;
     };
@@ -5360,7 +5360,7 @@ pub fn stbi__zexpand(arg_z: [*c]stbi__zbuf, arg_zout: [*c]u8, arg_n: c_int) call
         if (limit > (((@as(c_uint, @bitCast(@as(c_int, 2147483647))) *% @as(c_uint, 2)) +% @as(c_uint, 1)) / @as(c_uint, @bitCast(@as(c_int, 2))))) return 0;
         limit *%= @as(c_uint, @bitCast(@as(c_int, 2)));
     }
-    q = @as([*c]u8, @ptrCast(@alignCast(realloc(@as(?*anyopaque, @ptrCast(z.*.zout_start)), @as(c_ulong, @bitCast(@as(c_ulong, limit)))))));
+    q = @as([*c]u8, @ptrCast(@alignCast(realloc(@as(?*anyopaque, @ptrCast(z.*.zout_start)), @as(usize, @bitCast(@as(usize, limit)))))));
     _ = @sizeOf(c_uint);
     if (q == @as([*c]u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return 0;
     z.*.zout_start = q;
@@ -5546,8 +5546,8 @@ pub fn stbi__parse_huffman_block(arg_a: [*c]stbi__zbuf) callconv(.c) c_int {
             if (stbi__zdist_extra[@as(c_uint, @intCast(z))] != 0) {
                 dist += @as(c_int, @bitCast(stbi__zreceive(a, stbi__zdist_extra[@as(c_uint, @intCast(z))])));
             }
-            if (@divExact(@as(c_long, @bitCast(@intFromPtr(zout) -% @intFromPtr(a.*.zout_start))), @sizeOf(u8)) < @as(c_long, @bitCast(@as(c_long, dist)))) return 0;
-            if (@as(c_long, @bitCast(@as(c_long, len))) > @divExact(@as(c_long, @bitCast(@intFromPtr(a.*.zout_end) -% @intFromPtr(zout))), @sizeOf(u8))) {
+            if (@divExact(@as(isize, @bitCast(@intFromPtr(zout) -% @intFromPtr(a.*.zout_start))), @sizeOf(u8)) < @as(isize, @bitCast(@as(isize, dist)))) return 0;
+            if (@as(isize, @bitCast(@as(isize, len))) > @divExact(@as(isize, @bitCast(@intFromPtr(a.*.zout_end) -% @intFromPtr(zout))), @sizeOf(u8))) {
                 if (!(stbi__zexpand(a, zout, len) != 0)) return 0;
                 zout = a.*.zout;
             }
@@ -5678,7 +5678,7 @@ pub fn stbi__compute_huffman_codes(arg_a: [*c]stbi__zbuf) callconv(.c) c_int {
                 return 0;
             }
             if ((ntot - n) < c) return 0;
-            _ = memset(@as(?*anyopaque, @ptrCast(@as([*c]stbi_uc, @ptrCast(@alignCast(&lencodes[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(n)))))), @as(c_int, @bitCast(@as(c_uint, fill))), @as(c_ulong, @bitCast(@as(c_long, c))));
+            _ = memset(@as(?*anyopaque, @ptrCast(@as([*c]stbi_uc, @ptrCast(@alignCast(&lencodes[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(n)))))), @as(c_int, @bitCast(@as(c_uint, fill))), @as(usize, @bitCast(@as(isize, c))));
             n += c;
         }
     }
@@ -5726,7 +5726,7 @@ pub fn stbi__parse_uncompressed_block(arg_a: [*c]stbi__zbuf) callconv(.c) c_int 
     if (nlen != (len ^ @as(c_int, 65535))) return 0;
     if ((a.*.zbuffer + @as(usize, @bitCast(@as(isize, @intCast(len))))) > a.*.zbuffer_end) return 0;
     if ((a.*.zout + @as(usize, @bitCast(@as(isize, @intCast(len))))) > a.*.zout_end) if (!(stbi__zexpand(a, a.*.zout, len) != 0)) return 0;
-    _ = memcpy(@as(?*anyopaque, @ptrCast(a.*.zout)), @as(?*const anyopaque, @ptrCast(a.*.zbuffer)), @as(c_ulong, @bitCast(@as(c_long, len))));
+    _ = memcpy(@as(?*anyopaque, @ptrCast(a.*.zout)), @as(?*const anyopaque, @ptrCast(a.*.zbuffer)), @as(usize, @bitCast(@as(isize, len))));
     a.*.zbuffer += @as(usize, @bitCast(@as(isize, @intCast(len))));
     a.*.zout += @as(usize, @bitCast(@as(isize, @intCast(len))));
     return 1;
@@ -6363,11 +6363,11 @@ pub fn stbi__create_png_image_raw(arg_a: [*c]stbi__png, arg_raw: [*c]stbi_uc, ar
             while (true) {
                 switch (filter) {
                     @as(c_int, 0) => {
-                        _ = memcpy(@as(?*anyopaque, @ptrCast(cur)), @as(?*const anyopaque, @ptrCast(raw)), @as(c_ulong, @bitCast(@as(c_long, nk))));
+                        _ = memcpy(@as(?*anyopaque, @ptrCast(cur)), @as(?*const anyopaque, @ptrCast(raw)), @as(usize, @bitCast(@as(isize, nk))));
                         break;
                     },
                     @as(c_int, 1) => {
-                        _ = memcpy(@as(?*anyopaque, @ptrCast(cur)), @as(?*const anyopaque, @ptrCast(raw)), @as(c_ulong, @bitCast(@as(c_long, filter_bytes))));
+                        _ = memcpy(@as(?*anyopaque, @ptrCast(cur)), @as(?*const anyopaque, @ptrCast(raw)), @as(usize, @bitCast(@as(isize, filter_bytes))));
                         {
                             k = filter_bytes;
                             while (k < nk) : (k += 1) {
@@ -6479,7 +6479,7 @@ pub fn stbi__create_png_image_raw(arg_a: [*c]stbi__png, arg_raw: [*c]stbi_uc, ar
                         break;
                     },
                     @as(c_int, 5) => {
-                        _ = memcpy(@as(?*anyopaque, @ptrCast(cur)), @as(?*const anyopaque, @ptrCast(raw)), @as(c_ulong, @bitCast(@as(c_long, filter_bytes))));
+                        _ = memcpy(@as(?*anyopaque, @ptrCast(cur)), @as(?*const anyopaque, @ptrCast(raw)), @as(usize, @bitCast(@as(isize, filter_bytes))));
                         {
                             k = filter_bytes;
                             while (k < nk) : (k += 1) {
@@ -6586,7 +6586,7 @@ pub fn stbi__create_png_image_raw(arg_a: [*c]stbi__png, arg_raw: [*c]stbi_uc, ar
                 }
             } else if (depth == @as(c_int, 8)) {
                 if (img_n == out_n) {
-                    _ = memcpy(@as(?*anyopaque, @ptrCast(dest)), @as(?*const anyopaque, @ptrCast(cur)), @as(c_ulong, @bitCast(@as(c_ulong, x *% @as(stbi__uint32, @bitCast(img_n))))));
+                    _ = memcpy(@as(?*anyopaque, @ptrCast(dest)), @as(?*const anyopaque, @ptrCast(cur)), @as(usize, @bitCast(@as(usize, x *% @as(stbi__uint32, @bitCast(img_n))))));
                 } else {
                     stbi__create_png_alpha_expand8(dest, cur, x, img_n);
                 }
@@ -6776,7 +6776,7 @@ pub fn stbi__create_png_image(arg_a: [*c]stbi__png, arg_image_data: [*c]stbi_uc,
                                 _ = &out_y;
                                 var out_x: c_int = (i * xspc[@as(c_uint, @intCast(p))]) + xorig[@as(c_uint, @intCast(p))];
                                 _ = &out_x;
-                                _ = memcpy(@as(?*anyopaque, @ptrCast((final + ((@as(stbi__uint32, @bitCast(out_y)) *% a.*.s.*.img_x) *% @as(stbi__uint32, @bitCast(out_bytes)))) + @as(usize, @bitCast(@as(isize, @intCast(out_x * out_bytes)))))), @as(?*const anyopaque, @ptrCast(a.*.out + @as(usize, @bitCast(@as(isize, @intCast(((j * x) + i) * out_bytes)))))), @as(c_ulong, @bitCast(@as(c_long, out_bytes))));
+                                _ = memcpy(@as(?*anyopaque, @ptrCast((final + ((@as(stbi__uint32, @bitCast(out_y)) *% a.*.s.*.img_x) *% @as(stbi__uint32, @bitCast(out_bytes)))) + @as(usize, @bitCast(@as(isize, @intCast(out_x * out_bytes)))))), @as(?*const anyopaque, @ptrCast(a.*.out + @as(usize, @bitCast(@as(isize, @intCast(((j * x) + i) * out_bytes)))))), @as(usize, @bitCast(@as(isize, out_bytes))));
                             }
                         }
                     }
@@ -7191,7 +7191,7 @@ pub fn stbi__parse_png_file(arg_z: [*c]stbi__png, arg_scan: c_int, arg_req_comp:
                                 idata_limit *%= @as(stbi__uint32, @bitCast(@as(c_int, 2)));
                             }
                             _ = @sizeOf(stbi__uint32);
-                            p = @as([*c]stbi_uc, @ptrCast(@alignCast(realloc(@as(?*anyopaque, @ptrCast(z.*.idata)), @as(c_ulong, @bitCast(@as(c_ulong, idata_limit)))))));
+                            p = @as([*c]stbi_uc, @ptrCast(@alignCast(realloc(@as(?*anyopaque, @ptrCast(z.*.idata)), @as(usize, @bitCast(@as(usize, idata_limit)))))));
                             if (p == @as([*c]stbi_uc, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return 0;
                             z.*.idata = p;
                         }
@@ -7380,7 +7380,7 @@ pub fn stbi_write_png(arg_filename: [*c]const u8, arg_x: c_int, arg_y: c_int, ar
         free(@as(?*anyopaque, @ptrCast(png)));
         return 0;
     }
-    _ = fwrite(@as(?*const anyopaque, @ptrCast(png)), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))), @as(c_ulong, @bitCast(@as(c_long, len))), f);
+    _ = fwrite(@as(?*const anyopaque, @ptrCast(png)), @as(usize, @bitCast(@as(isize, @as(c_int, 1)))), @as(usize, @bitCast(@as(isize, len))), f);
     _ = fclose(f);
     free(@as(?*anyopaque, @ptrCast(png)));
     return 1;
@@ -7639,7 +7639,7 @@ pub fn stbi__stdio_write(arg_context: ?*anyopaque, arg_data: ?*anyopaque, arg_si
     _ = &data;
     var size = arg_size;
     _ = &size;
-    _ = fwrite(data, @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))), @as(c_ulong, @bitCast(@as(c_long, size))), @as(?*FILE, @ptrCast(context)));
+    _ = fwrite(data, @as(usize, @bitCast(@as(isize, @as(c_int, 1)))), @as(usize, @bitCast(@as(isize, size))), @as(?*FILE, @ptrCast(context)));
 }
 pub fn stbiw__fopen(arg_filename: [*c]const u8, arg_mode: [*c]const u8) callconv(.c) ?*FILE {
     var filename = arg_filename;
@@ -7694,7 +7694,7 @@ pub fn stbiw__write1(arg_s: [*c]stbi__write_context, arg_a: u8) callconv(.c) voi
     _ = &s;
     var a = arg_a;
     _ = &a;
-    if ((@as(usize, @bitCast(@as(c_long, s.*.buf_used))) +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) > @sizeOf([64]u8)) {
+    if ((@as(usize, @bitCast(@as(isize, s.*.buf_used))) +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) > @sizeOf([64]u8)) {
         stbiw__write_flush(s);
     }
     s.*.buffer[@as(c_uint, @intCast(blk: {
@@ -7715,7 +7715,7 @@ pub fn stbiw__write3(arg_s: [*c]stbi__write_context, arg_a: u8, arg_b: u8, arg_c
     _ = &c;
     var n: c_int = undefined;
     _ = &n;
-    if ((@as(usize, @bitCast(@as(c_long, s.*.buf_used))) +% @as(usize, @bitCast(@as(c_long, @as(c_int, 3))))) > @sizeOf([64]u8)) {
+    if ((@as(usize, @bitCast(@as(isize, s.*.buf_used))) +% @as(usize, @bitCast(@as(isize, @as(c_int, 3))))) > @sizeOf([64]u8)) {
         stbiw__write_flush(s);
     }
     n = s.*.buf_used;
@@ -7938,14 +7938,14 @@ pub fn stbi_write_tga_core(arg_s: [*c]stbi__write_context, arg_x: c_int, arg_y: 
                     len = 1;
                     if (i < (x - @as(c_int, 1))) {
                         len += 1;
-                        diff = memcmp(@as(?*const anyopaque, @ptrCast(begin)), @as(?*const anyopaque, @ptrCast(row + @as(usize, @bitCast(@as(isize, @intCast((i + @as(c_int, 1)) * comp)))))), @as(c_ulong, @bitCast(@as(c_long, comp))));
+                        diff = memcmp(@as(?*const anyopaque, @ptrCast(begin)), @as(?*const anyopaque, @ptrCast(row + @as(usize, @bitCast(@as(isize, @intCast((i + @as(c_int, 1)) * comp)))))), @as(usize, @bitCast(@as(isize, comp))));
                         if (diff != 0) {
                             var prev: [*c]const u8 = begin;
                             _ = &prev;
                             {
                                 k = i + @as(c_int, 2);
                                 while ((k < x) and (len < @as(c_int, 128))) : (k += 1) {
-                                    if (memcmp(@as(?*const anyopaque, @ptrCast(prev)), @as(?*const anyopaque, @ptrCast(row + @as(usize, @bitCast(@as(isize, @intCast(k * comp)))))), @as(c_ulong, @bitCast(@as(c_long, comp)))) != 0) {
+                                    if (memcmp(@as(?*const anyopaque, @ptrCast(prev)), @as(?*const anyopaque, @ptrCast(row + @as(usize, @bitCast(@as(isize, @intCast(k * comp)))))), @as(usize, @bitCast(@as(isize, comp)))) != 0) {
                                         prev += @as(usize, @bitCast(@as(isize, @intCast(comp))));
                                         len += 1;
                                     } else {
@@ -7958,7 +7958,7 @@ pub fn stbi_write_tga_core(arg_s: [*c]stbi__write_context, arg_x: c_int, arg_y: 
                             {
                                 k = i + @as(c_int, 2);
                                 while ((k < x) and (len < @as(c_int, 128))) : (k += 1) {
-                                    if (!(memcmp(@as(?*const anyopaque, @ptrCast(begin)), @as(?*const anyopaque, @ptrCast(row + @as(usize, @bitCast(@as(isize, @intCast(k * comp)))))), @as(c_ulong, @bitCast(@as(c_long, comp)))) != 0)) {
+                                    if (!(memcmp(@as(?*const anyopaque, @ptrCast(begin)), @as(?*const anyopaque, @ptrCast(row + @as(usize, @bitCast(@as(isize, @intCast(k * comp)))))), @as(usize, @bitCast(@as(isize, comp)))) != 0)) {
                                         len += 1;
                                     } else {
                                         break;
@@ -8268,7 +8268,7 @@ pub fn stbi_write_hdr_core(arg_s: [*c]stbi__write_context, arg_x: c_int, arg_y: 
     var data = arg_data;
     _ = &data;
     if (((y <= @as(c_int, 0)) or (x <= @as(c_int, 0))) or (data == @as([*c]f32, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))))))) return 0 else {
-        var scratch: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, x * @as(c_int, 4))))))));
+        var scratch: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(usize, @bitCast(@as(isize, x * @as(c_int, 4))))))));
         _ = &scratch;
         var i: c_int = undefined;
         _ = &i;
@@ -8278,7 +8278,7 @@ pub fn stbi_write_hdr_core(arg_s: [*c]stbi__write_context, arg_x: c_int, arg_y: 
         _ = &buffer;
         var header: [65:0]u8 = "#?RADIANCE\n# Written by stb_image_write.h\nFORMAT=32-bit_rle_rgbe\n".*;
         _ = &header;
-        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&header[@as(usize, @intCast(0))]))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([66]u8) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))))));
+        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&header[@as(usize, @intCast(0))]))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([66]u8) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))))));
         len = sprintf(@as([*c]u8, @ptrCast(@alignCast(&buffer[@as(usize, @intCast(0))]))), "EXPOSURE=          1.0000000000000\n\n-Y %d +X %d\n", y, x);
         s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&buffer[@as(usize, @intCast(0))]))))), len);
         {
@@ -8301,7 +8301,7 @@ pub fn stbiw__sbgrowf(arg_arr: [*c]?*anyopaque, arg_increment: c_int, arg_itemsi
     _ = &itemsize;
     var m: c_int = if (arr.* != null) (@as(c_int, 2) * (@as([*c]c_int, @ptrCast(@alignCast(arr.*))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))[@as(c_uint, @intCast(@as(c_int, 0)))]) + increment else increment + @as(c_int, 1);
     _ = &m;
-    var p: ?*anyopaque = realloc(@as(?*anyopaque, @ptrCast(if (arr.* != null) @as([*c]c_int, @ptrCast(@alignCast(arr.*))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))) else null)), @as(c_ulong, @bitCast(@as(c_long, itemsize * m))) +% (@sizeOf(c_int) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 2))))));
+    var p: ?*anyopaque = realloc(@as(?*anyopaque, @ptrCast(if (arr.* != null) @as([*c]c_int, @ptrCast(@alignCast(arr.*))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))) else null)), @as(usize, @bitCast(@as(isize, itemsize * m))) +% (@sizeOf(c_int) *% @as(usize, @bitCast(@as(isize, @as(c_int, 2))))));
     _ = &p;
     _ = (p != null) or ((blk: {
         __assert_fail("p", "/home/x/next/arcan/src/engine/external/stb_image_write.h", @as(c_int, 830), "stbiw__sbgrowf");
@@ -8556,7 +8556,7 @@ pub fn stbi_zlib_compress(arg_data: [*c]u8, arg_data_len: c_int, arg_out_len: [*
     _ = &bitcount;
     var out: [*c]u8 = null;
     _ = &out;
-    var hash_table: [*c][*c][*c]u8 = @as([*c][*c][*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, @as(c_int, 16384)))) *% @sizeOf([*c][*c]u8)))));
+    var hash_table: [*c][*c][*c]u8 = @as([*c][*c][*c]u8, @ptrCast(@alignCast(malloc(@as(usize, @bitCast(@as(isize, @as(c_int, 16384)))) *% @sizeOf([*c][*c]u8)))));
     _ = &hash_table;
     if (hash_table == @as([*c][*c][*c]u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) return null;
     if (quality < @as(c_int, 5)) {
@@ -8651,10 +8651,10 @@ pub fn stbi_zlib_compress(arg_data: [*c]u8, arg_data_len: c_int, arg_out_len: [*
         {
             j = 0;
             while (j < n) : (j += 1) {
-                if (@divExact(@as(c_long, @bitCast(@intFromPtr((blk: {
+                if (@divExact(@as(isize, @bitCast(@intFromPtr((blk: {
                     const tmp = j;
                     if (tmp >= 0) break :blk hlist + @as(usize, @intCast(tmp)) else break :blk hlist - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                }).*) -% @intFromPtr(data))), @sizeOf(u8)) > @as(c_long, @bitCast(@as(c_long, i - @as(c_int, 32768))))) {
+                }).*) -% @intFromPtr(data))), @sizeOf(u8)) > @as(isize, @bitCast(@as(isize, i - @as(c_int, 32768))))) {
                     var d: c_int = @as(c_int, @bitCast(stbiw__zlib_countm((blk: {
                         const tmp = j;
                         if (tmp >= 0) break :blk hlist + @as(usize, @intCast(tmp)) else break :blk hlist - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -8683,7 +8683,7 @@ pub fn stbi_zlib_compress(arg_data: [*c]u8, arg_data_len: c_int, arg_out_len: [*
             }).*)), @as(?*const anyopaque, @ptrCast((blk: {
                 const tmp = h;
                 if (tmp >= 0) break :blk hash_table + @as(usize, @intCast(tmp)) else break :blk hash_table - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-            }).* + @as(usize, @bitCast(@as(isize, @intCast(quality)))))), @sizeOf([*c]u8) *% @as(c_ulong, @bitCast(@as(c_long, quality))));
+            }).* + @as(usize, @bitCast(@as(isize, @intCast(quality)))))), @sizeOf([*c]u8) *% @as(usize, @bitCast(@as(isize, quality))));
             (@as([*c]c_int, @ptrCast(@alignCast(@as(?*anyopaque, @ptrCast((blk: {
                 const tmp = h;
                 if (tmp >= 0) break :blk hash_table + @as(usize, @intCast(tmp)) else break :blk hash_table - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -8736,10 +8736,10 @@ pub fn stbi_zlib_compress(arg_data: [*c]u8, arg_data_len: c_int, arg_out_len: [*
             {
                 j = 0;
                 while (j < n) : (j += 1) {
-                    if (@divExact(@as(c_long, @bitCast(@intFromPtr((blk: {
+                    if (@divExact(@as(isize, @bitCast(@intFromPtr((blk: {
                         const tmp = j;
                         if (tmp >= 0) break :blk hlist + @as(usize, @intCast(tmp)) else break :blk hlist - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                    }).*) -% @intFromPtr(data))), @sizeOf(u8)) > @as(c_long, @bitCast(@as(c_long, i - @as(c_int, 32767))))) {
+                    }).*) -% @intFromPtr(data))), @sizeOf(u8)) > @as(isize, @bitCast(@as(isize, i - @as(c_int, 32767))))) {
                         var e: c_int = @as(c_int, @bitCast(stbiw__zlib_countm((blk: {
                             const tmp = j;
                             if (tmp >= 0) break :blk hlist + @as(usize, @intCast(tmp)) else break :blk hlist - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
@@ -8754,7 +8754,7 @@ pub fn stbi_zlib_compress(arg_data: [*c]u8, arg_data_len: c_int, arg_out_len: [*
             }
         }
         if (bestloc != null) {
-            var d: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(data + @as(usize, @bitCast(@as(isize, @intCast(i))))) -% @intFromPtr(bestloc))), @sizeOf(u8))))));
+            var d: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(data + @as(usize, @bitCast(@as(isize, @intCast(i))))) -% @intFromPtr(bestloc))), @sizeOf(u8))))));
             _ = &d;
             _ = ((d <= @as(c_int, 32767)) and (best <= @as(c_int, 258))) or ((blk: {
                 __assert_fail("d <= 32767 && best <= 258", "/home/x/next/arcan/src/engine/external/stb_image_write.h", @as(c_int, 959), "stbi_zlib_compress");
@@ -9137,7 +9137,7 @@ pub fn stbi_zlib_compress(arg_data: [*c]u8, arg_data_len: c_int, arg_out_len: [*
                         break :blk_1 tmp;
                     };
                 };
-                _ = memcpy(@as(?*anyopaque, @ptrCast(out + @as(usize, @bitCast(@as(isize, @intCast((@as([*c]c_int, @ptrCast(@alignCast(@as(?*anyopaque, @ptrCast(out))))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))[@as(c_uint, @intCast(@as(c_int, 1)))])))))), @as(?*const anyopaque, @ptrCast(data + @as(usize, @bitCast(@as(isize, @intCast(j)))))), @as(c_ulong, @bitCast(@as(c_long, blocklen))));
+                _ = memcpy(@as(?*anyopaque, @ptrCast(out + @as(usize, @bitCast(@as(isize, @intCast((@as([*c]c_int, @ptrCast(@alignCast(@as(?*anyopaque, @ptrCast(out))))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))[@as(c_uint, @intCast(@as(c_int, 1)))])))))), @as(?*const anyopaque, @ptrCast(data + @as(usize, @bitCast(@as(isize, @intCast(j)))))), @as(usize, @bitCast(@as(isize, blocklen))));
                 (@as([*c]c_int, @ptrCast(@alignCast(@as(?*anyopaque, @ptrCast(out))))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))[@as(c_uint, @intCast(@as(c_int, 1)))] += blocklen;
                 j += blocklen;
             }
@@ -9233,7 +9233,7 @@ pub fn stbi_zlib_compress(arg_data: [*c]u8, arg_data_len: c_int, arg_out_len: [*
         };
     }
     out_len.* = (@as([*c]c_int, @ptrCast(@alignCast(@as(?*anyopaque, @ptrCast(out))))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))[@as(c_uint, @intCast(@as(c_int, 1)))];
-    _ = memmove(@as(?*anyopaque, @ptrCast(@as([*c]c_int, @ptrCast(@alignCast(@as(?*anyopaque, @ptrCast(out))))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))), @as(?*const anyopaque, @ptrCast(out)), @as(c_ulong, @bitCast(@as(c_long, out_len.*))));
+    _ = memmove(@as(?*anyopaque, @ptrCast(@as([*c]c_int, @ptrCast(@alignCast(@as(?*anyopaque, @ptrCast(out))))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))), @as(?*const anyopaque, @ptrCast(out)), @as(usize, @bitCast(@as(isize, out_len.*))));
     return @as([*c]u8, @ptrCast(@alignCast(@as([*c]c_int, @ptrCast(@alignCast(@as(?*anyopaque, @ptrCast(out))))) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))));
 }
 pub fn stbiw__crc32(arg_buffer: [*c]u8, arg_len: c_int) callconv(.c) c_uint {
@@ -9624,7 +9624,7 @@ pub fn stbiw__encode_png_line(arg_pixels: [*c]u8, arg_stride_bytes: c_int, arg_w
     var signed_stride: c_int = if (stbi__flip_vertically_on_write != 0) -stride_bytes else stride_bytes;
     _ = &signed_stride;
     if (@"type" == @as(c_int, 0)) {
-        _ = memcpy(@as(?*anyopaque, @ptrCast(line_buffer)), @as(?*const anyopaque, @ptrCast(z)), @as(c_ulong, @bitCast(@as(c_long, width * n))));
+        _ = memcpy(@as(?*anyopaque, @ptrCast(line_buffer)), @as(?*const anyopaque, @ptrCast(z)), @as(usize, @bitCast(@as(isize, width * n))));
         return;
     }
     {
@@ -9885,9 +9885,9 @@ pub export fn stbi_write_png_to_mem(arg_pixels: [*c]const u8, arg_stride_bytes: 
     if (force_filter >= @as(c_int, 5)) {
         force_filter = -@as(c_int, 1);
     }
-    filt = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, ((x * n) + @as(c_int, 1)) * y)))))));
+    filt = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(usize, @bitCast(@as(isize, ((x * n) + @as(c_int, 1)) * y)))))));
     if (!(filt != null)) return null;
-    line_buffer = @as([*c]i8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, x * n)))))));
+    line_buffer = @as([*c]i8, @ptrCast(@alignCast(malloc(@as(usize, @bitCast(@as(isize, x * n)))))));
     if (!(line_buffer != null)) {
         free(@as(?*anyopaque, @ptrCast(filt)));
         return null;
@@ -9938,18 +9938,18 @@ pub export fn stbi_write_png_to_mem(arg_pixels: [*c]const u8, arg_stride_bytes: 
                 const tmp = j * ((x * n) + @as(c_int, 1));
                 if (tmp >= 0) break :blk filt + @as(usize, @intCast(tmp)) else break :blk filt - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).* = @as(u8, @bitCast(@as(i8, @truncate(filter_type))));
-            _ = memmove(@as(?*anyopaque, @ptrCast((filt + @as(usize, @bitCast(@as(isize, @intCast(j * ((x * n) + @as(c_int, 1))))))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))), @as(?*const anyopaque, @ptrCast(line_buffer)), @as(c_ulong, @bitCast(@as(c_long, x * n))));
+            _ = memmove(@as(?*anyopaque, @ptrCast((filt + @as(usize, @bitCast(@as(isize, @intCast(j * ((x * n) + @as(c_int, 1))))))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))), @as(?*const anyopaque, @ptrCast(line_buffer)), @as(usize, @bitCast(@as(isize, x * n))));
         }
     }
     free(@as(?*anyopaque, @ptrCast(line_buffer)));
     zlib = stbi_zlib_compress(filt, y * ((x * n) + @as(c_int, 1)), &zlen, stbi_write_png_compression_level);
     free(@as(?*anyopaque, @ptrCast(filt)));
     if (!(zlib != null)) return null;
-    out = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(@as(c_long, ((((@as(c_int, 8) + @as(c_int, 12)) + @as(c_int, 13)) + @as(c_int, 12)) + zlen) + @as(c_int, 12))))))));
+    out = @as([*c]u8, @ptrCast(@alignCast(malloc(@as(usize, @bitCast(@as(isize, ((((@as(c_int, 8) + @as(c_int, 12)) + @as(c_int, 13)) + @as(c_int, 12)) + zlen) + @as(c_int, 12))))))));
     if (!(out != null)) return null;
     out_len.* = ((((@as(c_int, 8) + @as(c_int, 12)) + @as(c_int, 13)) + @as(c_int, 12)) + zlen) + @as(c_int, 12);
     o = out;
-    _ = memmove(@as(?*anyopaque, @ptrCast(o)), @as(?*const anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&sig[@as(usize, @intCast(0))]))))), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8)))));
+    _ = memmove(@as(?*anyopaque, @ptrCast(o)), @as(?*const anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&sig[@as(usize, @intCast(0))]))))), @as(usize, @bitCast(@as(isize, @as(c_int, 8)))));
     o += @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 8)))));
     _ = blk: {
         _ = blk_1: {
@@ -10156,7 +10156,7 @@ pub export fn stbi_write_png_to_mem(arg_pixels: [*c]const u8, arg_stride_bytes: 
             break :blk_1 ref.*;
         };
     };
-    _ = memmove(@as(?*anyopaque, @ptrCast(o)), @as(?*const anyopaque, @ptrCast(zlib)), @as(c_ulong, @bitCast(@as(c_long, zlen))));
+    _ = memmove(@as(?*anyopaque, @ptrCast(o)), @as(?*const anyopaque, @ptrCast(zlib)), @as(usize, @bitCast(@as(isize, zlen))));
     o += @as(usize, @bitCast(@as(isize, @intCast(zlen))));
     free(@as(?*anyopaque, @ptrCast(zlib)));
     stbiw__wpcrc(&o, zlen);
@@ -13560,16 +13560,16 @@ pub fn stbi_write_jpg_core(arg_s: [*c]stbi__write_context, arg_width: c_int, arg
         stbiw__putc(s, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 1))))));
         s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&UVTable[@as(usize, @intCast(0))]))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([64]u8))))));
         s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&head1[@as(usize, @intCast(0))]))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([24]u8))))));
-        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_dc_luminance_nrcodes.static[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([17]u8) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))))));
+        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_dc_luminance_nrcodes.static[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([17]u8) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))))));
         s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_dc_luminance_values.static[@as(usize, @intCast(0))]))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([12]u8))))));
         stbiw__putc(s, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 16))))));
-        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_ac_luminance_nrcodes.static[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([17]u8) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))))));
+        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_ac_luminance_nrcodes.static[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([17]u8) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))))));
         s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_ac_luminance_values.static[@as(usize, @intCast(0))]))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([162]u8))))));
         stbiw__putc(s, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 1))))));
-        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_dc_chrominance_nrcodes.static[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([17]u8) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))))));
+        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_dc_chrominance_nrcodes.static[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([17]u8) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))))));
         s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_dc_chrominance_values.static[@as(usize, @intCast(0))]))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([12]u8))))));
         stbiw__putc(s, @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 17))))));
-        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_ac_chrominance_nrcodes.static[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([17]u8) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))))));
+        s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_ac_chrominance_nrcodes.static[@as(usize, @intCast(0))]))) + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([17]u8) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))))));
         s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&std_ac_chrominance_values.static[@as(usize, @intCast(0))]))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([162]u8))))));
         s.*.func.?(s.*.context, @as(?*anyopaque, @ptrCast(@constCast(@volatileCast(@as([*c]const u8, @ptrCast(@alignCast(&head2.static[@as(usize, @intCast(0))]))))))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([14]u8))))));
     }

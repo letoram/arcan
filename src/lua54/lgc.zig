@@ -64,7 +64,7 @@ pub const wchar_t = c_uint;
 pub const char16_t = c_ushort;
 pub const char32_t = c_uint;
 pub const errno_t = c_int;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const wint_t = c_uint;
 pub const bool32 = c_int;
 pub const intmax_t = c_long;
@@ -291,17 +291,17 @@ pub extern fn heapsort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaqu
 pub extern fn mergesort(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.c) c_int) c_int;
 pub extern fn mergesort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque, ?*anyopaque) callconv(.c) c_int, ?*anyopaque) c_int;
 pub extern fn free(?*anyopaque) void;
-pub extern fn malloc(c_ulong) ?*anyopaque;
-pub extern fn calloc(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn memalign(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
+pub extern fn malloc(usize) ?*anyopaque;
+pub extern fn calloc(usize, usize) ?*anyopaque;
+pub extern fn memalign(usize, usize) ?*anyopaque;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
 pub extern fn realloc_in_place(?*anyopaque, usize) ?*anyopaque;
 pub extern fn reallocarray(?*anyopaque, usize, usize) ?*anyopaque;
 pub extern fn valloc(usize) ?*anyopaque;
 pub extern fn pvalloc(usize) ?*anyopaque;
 pub extern fn strdup([*c]const u8) [*c]u8;
-pub extern fn strndup([*c]const u8, c_ulong) [*c]u8;
-pub extern fn aligned_alloc(c_ulong, c_ulong) ?*anyopaque;
+pub extern fn strndup([*c]const u8, usize) [*c]u8;
+pub extern fn aligned_alloc(usize, usize) ?*anyopaque;
 pub extern fn posix_memalign([*c]?*anyopaque, usize, usize) c_int;
 pub extern fn mallopt(c_int, c_int) c_int;
 pub extern fn malloc_trim(usize) c_int;
@@ -384,35 +384,35 @@ pub extern fn fcvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn ecvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn gcvt(f64, c_int, [*c]u8) [*c]u8;
 pub extern fn at_quick_exit(?*const fn () callconv(.c) void) c_int;
-pub extern fn memset(?*anyopaque, c_int, c_ulong) ?*anyopaque;
-pub extern fn memmove(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memcpy(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
+pub extern fn memset(?*anyopaque, c_int, usize) ?*anyopaque;
+pub extern fn memmove(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
+pub extern fn memcpy(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
 pub extern fn hexpcpy([*c]u8, ?*const anyopaque, usize) [*c]u8;
-pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
+pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn strlen([*c]const u8) c_ulong;
 pub extern fn strnlen([*c]const u8, usize) usize;
 pub extern fn strnlen_s([*c]const u8, usize) usize;
 pub extern fn strchr([*c]const u8, c_int) [*c]u8;
-pub extern fn memchr(?*const anyopaque, c_int, c_ulong) ?*anyopaque;
+pub extern fn memchr(?*const anyopaque, c_int, usize) ?*anyopaque;
 pub extern fn rawmemchr(?*const anyopaque, c_int) ?*anyopaque;
 pub extern fn wcslen([*c]const c_uint) c_ulong;
 pub extern fn wcsnlen([*c]const wchar_t, usize) usize;
 pub extern fn wcsnlen_s([*c]const wchar_t, usize) usize;
 pub extern fn wcschr([*c]const c_uint, c_uint) [*c]c_uint;
-pub extern fn wmemchr([*c]const c_uint, c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemchr([*c]const c_uint, c_uint, usize) [*c]c_uint;
 pub extern fn wcschrnul([*c]const wchar_t, wchar_t) [*c]wchar_t;
 pub extern fn strstr([*c]const u8, [*c]const u8) [*c]u8;
 pub extern fn wcsstr([*c]const wchar_t, [*c]const wchar_t) [*c]wchar_t;
 pub extern fn strcmp([*c]const u8, [*c]const u8) c_int;
-pub extern fn strncmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcscmp([*c]const c_uint, [*c]const c_uint) c_int;
-pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
-pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
+pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
+pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
 pub extern fn strcasecmp([*c]const u8, [*c]const u8) c_int;
 pub extern fn wcscasecmp([*c]const wchar_t, [*c]const wchar_t) c_int;
-pub extern fn strncasecmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncasecmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcsncasecmp([*c]const wchar_t, [*c]const wchar_t, usize) c_int;
 pub extern fn strrchr([*c]const u8, c_int) [*c]u8;
 pub extern fn wcsrchr([*c]const wchar_t, wchar_t) [*c]wchar_t;
@@ -425,21 +425,21 @@ pub extern fn wcscspn([*c]const wchar_t, [*c]const wchar_t) usize;
 pub extern fn memfrob(?*anyopaque, usize) ?*anyopaque;
 pub extern fn strcoll([*c]const u8, [*c]const u8) c_int;
 pub extern fn stpcpy([*c]u8, [*c]const u8) [*c]u8;
-pub extern fn stpncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn stpncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strcat([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscat([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strxfrm([*c]u8, [*c]const u8, c_ulong) c_ulong;
+pub extern fn strxfrm([*c]u8, [*c]const u8, usize) usize;
 pub extern fn strcpy([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscpy([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn wcsncat([*c]wchar_t, [*c]const wchar_t, usize) [*c]wchar_t;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strtok([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn strtok_r([*c]u8, [*c]const u8, [*c][*c]u8) [*c]u8;
 pub extern fn wcstok([*c]wchar_t, [*c]const wchar_t, [*c][*c]wchar_t) [*c]wchar_t;
 pub extern fn wmemset([*c]wchar_t, wchar_t, usize) [*c]wchar_t;
-pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
-pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
+pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
 pub extern fn strfmon([*c]u8, usize, [*c]const u8, ...) isize;
 pub extern fn a64l([*c]const u8) c_long;
 pub extern fn l64a(c_long) [*c]u8;
@@ -469,9 +469,9 @@ pub extern fn strsignal(c_int) [*c]u8;
 pub extern fn strerror(c_int) [*c]u8;
 pub extern fn strerror_r(c_int, [*c]u8, usize) errno_t;
 pub extern fn __xpg_strerror_r(c_int, [*c]u8, usize) [*c]u8;
-pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
-pub extern fn bcopy(?*const anyopaque, ?*anyopaque, c_ulong) void;
-pub extern fn bzero(?*anyopaque, c_ulong) void;
+pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
+pub extern fn bcopy(?*const anyopaque, ?*anyopaque, usize) void;
+pub extern fn bzero(?*anyopaque, usize) void;
 pub extern fn index([*c]const u8, c_int) [*c]u8;
 pub extern fn rindex([*c]const u8, c_int) [*c]u8;
 pub extern fn mktemp([*c]u8) [*c]u8;
@@ -975,8 +975,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -1008,8 +1008,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -1469,7 +1469,7 @@ pub export fn luaC_freeallobjects(L: [*c]lua_State) void {
 pub export fn luaC_step(L: [*c]lua_State) void {
     const g: [*c]global_State = L.*.l_G;
     if (@as(c_int, @bitCast(@as(c_uint, g.*.gcstp))) != 0) {
-        luaE_setdebt(g, @as(l_mem, @bitCast(@as(c_long, -@as(c_int, 2000)))));
+        luaE_setdebt(g, @as(l_mem, @bitCast(@as(isize, -@as(c_int, 2000)))));
     } else {
         if ((@as(c_int, @bitCast(@as(c_uint, g.*.gckind))) == 1) or (g.*.lastatomic != 0)) {
             genstep(L, g);
@@ -1679,7 +1679,7 @@ pub fn atomic(L: [*c]lua_State) callconv(.c) lu_mem {
     }
     markmt(g);
     work +%= propagateall(g);
-    work +%= @as(lu_mem, @bitCast(@as(c_long, remarkupvals(g))));
+    work +%= @as(lu_mem, @bitCast(@as(isize, remarkupvals(g))));
     work +%= propagateall(g);
     g.*.gray = grayagain;
     work +%= propagateall(g);
@@ -1818,7 +1818,7 @@ pub fn genlink(g: [*c]global_State, o: [*c]GCObject) callconv(.c) void {
     }
 }
 pub fn traverseweakvalue(g: [*c]global_State, h: [*c]Table) callconv(.c) void {
-    const limit: [*c]Node = &h.*.node[@as(usize, @bitCast(@as(c_long, @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode)))))))];
+    const limit: [*c]Node = &h.*.node[@as(usize, @bitCast(@as(isize, @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode)))))))];
     var hasclears: c_int = @intFromBool(h.*.alimit > @as(c_uint, @bitCast(@as(c_int, 0))));
     var n: [*c]Node = &h.*.node[@as(c_uint, @intCast(0))];
     while (n < limit) : (n += 1) {
@@ -1883,7 +1883,7 @@ pub fn traverseephemeron(g: [*c]global_State, h: [*c]Table, inv: c_int) callconv
     return marked;
 }
 pub fn traversestrongtable(g: [*c]global_State, h: [*c]Table) callconv(.c) void {
-    const limit: [*c]Node = &h.*.node[@as(usize, @bitCast(@as(c_long, @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode)))))))];
+    const limit: [*c]Node = &h.*.node[@as(usize, @bitCast(@as(isize, @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode)))))))];
     const asize: c_uint = luaH_realasize(h);
     {
         var i: c_uint = 0;
@@ -1971,7 +1971,7 @@ pub fn traversetable(arg_g: [*c]global_State, arg_h: [*c]Table) callconv(.c) lu_
     } else {
         traversestrongtable(g, h);
     }
-    return @as(lu_mem, @bitCast(@as(c_ulong, (@as(c_uint, @bitCast(@as(c_int, 1))) +% h.*.alimit) +% @as(c_uint, @bitCast(@as(c_int, 2) * (if (h.*.lastfree == @as([*c]Node, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) @as(c_int, 0) else @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode))))))))));
+    return @as(lu_mem, @bitCast(@as(usize, (@as(c_uint, @bitCast(@as(c_int, 1))) +% h.*.alimit) +% @as(c_uint, @bitCast(@as(c_int, 2) * (if (h.*.lastfree == @as([*c]Node, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) @as(c_int, 0) else @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode))))))))));
 }
 pub fn traverseudata(arg_g: [*c]global_State, arg_u: [*c]Udata) callconv(.c) c_int {
     var g = arg_g;
@@ -2283,7 +2283,7 @@ pub fn traversethread(arg_g: [*c]global_State, arg_th: [*c]lua_State) callconv(.
     } else if (!(g.*.gcemergency != 0)) {
         luaD_shrinkstack(th);
     }
-    return @as(c_int, 1) + @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(th.*.stack_last.p) -% @intFromPtr(th.*.stack.p))), @sizeOf(StackValue))))));
+    return @as(c_int, 1) + @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(th.*.stack_last.p) -% @intFromPtr(th.*.stack.p))), @sizeOf(StackValue))))));
 }
 pub fn propagatemark(arg_g: [*c]global_State) callconv(.c) lu_mem {
     var g = arg_g;
@@ -2305,23 +2305,23 @@ pub fn propagatemark(arg_g: [*c]global_State) callconv(.c) lu_mem {
                 _ = @as(c_int, 0);
                 break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.h;
             }),
-            @as(c_int, 7) => return @as(lu_mem, @bitCast(@as(c_long, traverseudata(g, blk: {
+            @as(c_int, 7) => return @as(lu_mem, @bitCast(@as(isize, traverseudata(g, blk: {
                 _ = @as(c_int, 0);
                 break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.u;
             })))),
-            @as(c_int, 6) => return @as(lu_mem, @bitCast(@as(c_long, traverseLclosure(g, blk: {
+            @as(c_int, 6) => return @as(lu_mem, @bitCast(@as(isize, traverseLclosure(g, blk: {
                 _ = @as(c_int, 0);
                 break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.cl.l;
             })))),
-            @as(c_int, 38) => return @as(lu_mem, @bitCast(@as(c_long, traverseCclosure(g, blk: {
+            @as(c_int, 38) => return @as(lu_mem, @bitCast(@as(isize, traverseCclosure(g, blk: {
                 _ = @as(c_int, 0);
                 break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.cl.c;
             })))),
-            @as(c_int, 10) => return @as(lu_mem, @bitCast(@as(c_long, traverseproto(g, blk: {
+            @as(c_int, 10) => return @as(lu_mem, @bitCast(@as(isize, traverseproto(g, blk: {
                 _ = @as(c_int, 0);
                 break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.p;
             })))),
-            @as(c_int, 8) => return @as(lu_mem, @bitCast(@as(c_long, traversethread(g, blk: {
+            @as(c_int, 8) => return @as(lu_mem, @bitCast(@as(isize, traversethread(g, blk: {
                 _ = @as(c_int, 0);
                 break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.th;
             })))),
@@ -2400,7 +2400,7 @@ pub fn clearbykeys(arg_g: [*c]global_State, arg_l: [*c]GCObject) callconv(.c) vo
             break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(l))).*.h;
         };
         _ = &h;
-        var limit: [*c]Node = &h.*.node[@as(usize, @bitCast(@as(c_long, @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode)))))))];
+        var limit: [*c]Node = &h.*.node[@as(usize, @bitCast(@as(isize, @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode)))))))];
         _ = &limit;
         var n: [*c]Node = undefined;
         _ = &n;
@@ -2439,7 +2439,7 @@ pub fn clearbyvalues(arg_g: [*c]global_State, arg_l: [*c]GCObject, arg_f: [*c]GC
         _ = &h;
         var n: [*c]Node = undefined;
         _ = &n;
-        var limit: [*c]Node = &h.*.node[@as(usize, @bitCast(@as(c_long, @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode)))))))];
+        var limit: [*c]Node = &h.*.node[@as(usize, @bitCast(@as(isize, @as(c_int, 1) << @intCast(@as(c_int, @bitCast(@as(c_uint, h.*.lsizenode)))))))];
         _ = &limit;
         var i: c_uint = undefined;
         _ = &i;
@@ -2520,7 +2520,7 @@ pub fn freeobj(arg_L: [*c]lua_State, arg_o: [*c]GCObject) callconv(.c) void {
                         break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.cl.l;
                     };
                     _ = &cl;
-                    luaM_free_(L, @as(?*anyopaque, @ptrCast(cl)), @as(usize, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, @truncate(@offsetOf(struct_LClosure, "upvals"))))) + (@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([*c]TValue))))) * @as(c_int, @bitCast(@as(c_uint, cl.*.nupvalues))))))));
+                    luaM_free_(L, @as(?*anyopaque, @ptrCast(cl)), @as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, @truncate(@offsetOf(struct_LClosure, "upvals"))))) + (@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([*c]TValue))))) * @as(c_int, @bitCast(@as(c_uint, cl.*.nupvalues))))))));
                     break;
                 }
             },
@@ -2531,7 +2531,7 @@ pub fn freeobj(arg_L: [*c]lua_State, arg_o: [*c]GCObject) callconv(.c) void {
                         break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.cl.c;
                     };
                     _ = &cl;
-                    luaM_free_(L, @as(?*anyopaque, @ptrCast(cl)), @as(usize, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, @truncate(@offsetOf(struct_CClosure, "upvalue"))))) + (@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(TValue))))) * @as(c_int, @bitCast(@as(c_uint, cl.*.nupvalues))))))));
+                    luaM_free_(L, @as(?*anyopaque, @ptrCast(cl)), @as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, @truncate(@offsetOf(struct_CClosure, "upvalue"))))) + (@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(TValue))))) * @as(c_int, @bitCast(@as(c_uint, cl.*.nupvalues))))))));
                     break;
                 }
             },
@@ -2556,7 +2556,7 @@ pub fn freeobj(arg_L: [*c]lua_State, arg_o: [*c]GCObject) callconv(.c) void {
                         break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.u;
                     };
                     _ = &u;
-                    luaM_free_(L, @as(?*anyopaque, @ptrCast(o)), (if (@as(c_int, @bitCast(@as(c_uint, u.*.nuvalue))) == @as(c_int, 0)) @offsetOf(struct_Udata0, "bindata") else @offsetOf(struct_Udata, "uv") +% (@sizeOf(UValue) *% @as(c_ulong, @bitCast(@as(c_ulong, u.*.nuvalue))))) +% u.*.len);
+                    luaM_free_(L, @as(?*anyopaque, @ptrCast(o)), (if (@as(c_int, @bitCast(@as(c_uint, u.*.nuvalue))) == @as(c_int, 0)) @offsetOf(struct_Udata0, "bindata") else @offsetOf(struct_Udata, "uv") +% (@sizeOf(UValue) *% @as(usize, @bitCast(@as(usize, u.*.nuvalue))))) +% u.*.len);
                     break;
                 }
             },
@@ -2568,7 +2568,7 @@ pub fn freeobj(arg_L: [*c]lua_State, arg_o: [*c]GCObject) callconv(.c) void {
                     };
                     _ = &ts;
                     luaS_remove(L, ts);
-                    luaM_free_(L, @as(?*anyopaque, @ptrCast(ts)), @offsetOf(struct_TString, "contents") +% (@as(c_ulong, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, ts.*.shrlen))) + @as(c_int, 1)))) *% @sizeOf(u8)));
+                    luaM_free_(L, @as(?*anyopaque, @ptrCast(ts)), @offsetOf(struct_TString, "contents") +% (@as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, ts.*.shrlen))) + @as(c_int, 1)))) *% @sizeOf(u8)));
                     break;
                 }
             },
@@ -2579,7 +2579,7 @@ pub fn freeobj(arg_L: [*c]lua_State, arg_o: [*c]GCObject) callconv(.c) void {
                         break :blk &@as([*c]union_GCUnion, @ptrCast(@alignCast(o))).*.ts;
                     };
                     _ = &ts;
-                    luaM_free_(L, @as(?*anyopaque, @ptrCast(ts)), @offsetOf(struct_TString, "contents") +% ((ts.*.u.lnglen +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) *% @sizeOf(u8)));
+                    luaM_free_(L, @as(?*anyopaque, @ptrCast(ts)), @offsetOf(struct_TString, "contents") +% ((ts.*.u.lnglen +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) *% @sizeOf(u8)));
                     break;
                 }
             },
@@ -2777,11 +2777,11 @@ pub fn GCTM(arg_L: [*c]lua_State) callconv(.c) void {
             _ = @as(c_int, 0);
         }
         L.*.ci.*.callstatus |= @as(c_ushort, @bitCast(@as(c_short, @truncate(@as(c_int, 1) << @intCast(7)))));
-        status = luaD_pcall(L, &dothecall, @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))), @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.top.p - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8)), @as(ptrdiff_t, @bitCast(@as(c_long, @as(c_int, 0)))));
+        status = luaD_pcall(L, &dothecall, @as(?*anyopaque, @ptrFromInt(@as(c_int, 0))), @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.top.p - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))))))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8)), @as(ptrdiff_t, @bitCast(@as(isize, @as(c_int, 0)))));
         L.*.ci.*.callstatus &= @as(c_ushort, @bitCast(@as(c_short, @truncate(~(@as(c_int, 1) << @intCast(7))))));
         L.*.allowhook = oldah;
         g.*.gcstp = @as(lu_byte, @bitCast(@as(i8, @truncate(oldgcstp))));
-        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(status != @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(status != @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
             luaE_warnerror(L, "__gc");
             L.*.top.p -= 1;
         }
@@ -2879,12 +2879,12 @@ pub fn setpause(arg_g: [*c]global_State) callconv(.c) void {
     _ = &debt;
     var pause_1: c_int = @as(c_int, @bitCast(@as(c_uint, g.*.gcpause))) * @as(c_int, 4);
     _ = &pause_1;
-    var estimate: l_mem = @as(l_mem, @bitCast(g.*.GCestimate / @as(lu_mem, @bitCast(@as(c_long, @as(c_int, 100))))));
+    var estimate: l_mem = @as(l_mem, @bitCast(g.*.GCestimate / @as(lu_mem, @bitCast(@as(isize, @as(c_int, 100))))));
     _ = &estimate;
     _ = @as(c_int, 0);
-    threshold = if (@as(l_mem, @bitCast(@as(c_long, pause_1))) < @divTrunc(@as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(c_long, @as(c_int, 0)))) >> @intCast(1))), estimate)) estimate * @as(l_mem, @bitCast(@as(c_long, pause_1))) else @as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(c_long, @as(c_int, 0)))) >> @intCast(1)));
+    threshold = if (@as(l_mem, @bitCast(@as(isize, pause_1))) < @divTrunc(@as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(isize, @as(c_int, 0)))) >> @intCast(1))), estimate)) estimate * @as(l_mem, @bitCast(@as(isize, pause_1))) else @as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(isize, @as(c_int, 0)))) >> @intCast(1)));
     debt = @as(l_mem, @bitCast(@as(lu_mem, @bitCast(g.*.totalbytes + g.*.GCdebt)) -% @as(lu_mem, @bitCast(threshold))));
-    if (debt > @as(l_mem, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (debt > @as(l_mem, @bitCast(@as(isize, @as(c_int, 0))))) {
         debt = 0;
     }
     luaE_setdebt(g, debt);
@@ -3184,7 +3184,7 @@ pub fn atomic2gen(arg_L: [*c]lua_State, arg_g: [*c]global_State) callconv(.c) vo
 pub fn setminordebt(arg_g: [*c]global_State) callconv(.c) void {
     var g = arg_g;
     _ = &g;
-    luaE_setdebt(g, -(@as(l_mem, @bitCast(@as(lu_mem, @bitCast(g.*.totalbytes + g.*.GCdebt)) / @as(lu_mem, @bitCast(@as(c_long, @as(c_int, 100)))))) * @as(l_mem, @bitCast(@as(c_ulong, g.*.genminormul)))));
+    luaE_setdebt(g, -(@as(l_mem, @bitCast(@as(lu_mem, @bitCast(g.*.totalbytes + g.*.GCdebt)) / @as(lu_mem, @bitCast(@as(isize, @as(c_int, 100)))))) * @as(l_mem, @bitCast(@as(usize, g.*.genminormul)))));
 }
 pub fn entergen(arg_L: [*c]lua_State, arg_g: [*c]global_State) callconv(.c) lu_mem {
     var L = arg_L;
@@ -3266,17 +3266,17 @@ pub fn genstep(arg_L: [*c]lua_State, arg_g: [*c]global_State) callconv(.c) void 
     _ = &L;
     var g = arg_g;
     _ = &g;
-    if (g.*.lastatomic != @as(lu_mem, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    if (g.*.lastatomic != @as(lu_mem, @bitCast(@as(isize, @as(c_int, 0))))) {
         stepgenfull(L, g);
     } else {
         var majorbase: lu_mem = g.*.GCestimate;
         _ = &majorbase;
-        var majorinc: lu_mem = (majorbase / @as(lu_mem, @bitCast(@as(c_long, @as(c_int, 100))))) *% @as(lu_mem, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, g.*.genmajormul))) * @as(c_int, 4))));
+        var majorinc: lu_mem = (majorbase / @as(lu_mem, @bitCast(@as(isize, @as(c_int, 100))))) *% @as(lu_mem, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, g.*.genmajormul))) * @as(c_int, 4))));
         _ = &majorinc;
-        if ((g.*.GCdebt > @as(l_mem, @bitCast(@as(c_long, @as(c_int, 0))))) and (@as(lu_mem, @bitCast(g.*.totalbytes + g.*.GCdebt)) > (majorbase +% majorinc))) {
+        if ((g.*.GCdebt > @as(l_mem, @bitCast(@as(isize, @as(c_int, 0))))) and (@as(lu_mem, @bitCast(g.*.totalbytes + g.*.GCdebt)) > (majorbase +% majorinc))) {
             var numobjs: lu_mem = fullgen(L, g);
             _ = &numobjs;
-            if (@as(lu_mem, @bitCast(g.*.totalbytes + g.*.GCdebt)) < (majorbase +% (majorinc / @as(lu_mem, @bitCast(@as(c_long, @as(c_int, 2))))))) {
+            if (@as(lu_mem, @bitCast(g.*.totalbytes + g.*.GCdebt)) < (majorbase +% (majorinc / @as(lu_mem, @bitCast(@as(isize, @as(c_int, 2))))))) {
                 _ = @as(c_int, 0);
             } else {
                 g.*.lastatomic = numobjs;
@@ -3368,19 +3368,19 @@ pub fn singlestep(arg_L: [*c]lua_State) callconv(.c) lu_mem {
             },
             @as(c_int, 3) => {
                 {
-                    work = @as(lu_mem, @bitCast(@as(c_long, sweepstep(L, g, @as(c_int, 4), &g.*.finobj))));
+                    work = @as(lu_mem, @bitCast(@as(isize, sweepstep(L, g, @as(c_int, 4), &g.*.finobj))));
                     break;
                 }
             },
             @as(c_int, 4) => {
                 {
-                    work = @as(lu_mem, @bitCast(@as(c_long, sweepstep(L, g, @as(c_int, 5), &g.*.tobefnz))));
+                    work = @as(lu_mem, @bitCast(@as(isize, sweepstep(L, g, @as(c_int, 5), &g.*.tobefnz))));
                     break;
                 }
             },
             @as(c_int, 5) => {
                 {
-                    work = @as(lu_mem, @bitCast(@as(c_long, sweepstep(L, g, @as(c_int, 6), null))));
+                    work = @as(lu_mem, @bitCast(@as(isize, sweepstep(L, g, @as(c_int, 6), null))));
                     break;
                 }
             },
@@ -3396,7 +3396,7 @@ pub fn singlestep(arg_L: [*c]lua_State) callconv(.c) lu_mem {
                 {
                     if ((g.*.tobefnz != null) and !(g.*.gcemergency != 0)) {
                         g.*.gcstopem = 0;
-                        work = @as(lu_mem, @bitCast(@as(c_long, runafewfinalizers(L, @as(c_int, 10)) * @as(c_int, 50))));
+                        work = @as(lu_mem, @bitCast(@as(isize, runafewfinalizers(L, @as(c_int, 10)) * @as(c_int, 50))));
                     } else {
                         g.*.gcstate = 8;
                         work = 0;
@@ -3421,9 +3421,9 @@ pub fn incstep(arg_L: [*c]lua_State, arg_g: [*c]global_State) callconv(.c) void 
     _ = &g;
     var stepmul: c_int = (@as(c_int, @bitCast(@as(c_uint, g.*.gcstepmul))) * @as(c_int, 4)) | @as(c_int, 1);
     _ = &stepmul;
-    var debt: l_mem = @as(l_mem, @bitCast((@as(c_ulong, @bitCast(g.*.GCdebt)) / @sizeOf(TValue)) *% @as(c_ulong, @bitCast(@as(c_long, stepmul)))));
+    var debt: l_mem = @as(l_mem, @bitCast((@as(usize, @bitCast(g.*.GCdebt)) / @sizeOf(TValue)) *% @as(usize, @bitCast(@as(isize, stepmul)))));
     _ = &debt;
-    var stepsize: l_mem = @as(l_mem, @bitCast(if (@as(c_ulong, @bitCast(@as(c_ulong, g.*.gcstepsize))) <= ((@sizeOf(l_mem) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8))))) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 2)))))) (@as(c_ulong, @bitCast(@as(l_mem, @bitCast(@as(c_long, @as(c_int, 1)))) << @intCast(@as(c_int, @bitCast(@as(c_uint, g.*.gcstepsize)))))) / @sizeOf(TValue)) *% @as(c_ulong, @bitCast(@as(c_long, stepmul))) else @as(c_ulong, @bitCast(@as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(c_long, @as(c_int, 0)))) >> @intCast(1)))))));
+    var stepsize: l_mem = @as(l_mem, @bitCast(if (@as(usize, @bitCast(@as(usize, g.*.gcstepsize))) <= ((@sizeOf(l_mem) *% @as(usize, @bitCast(@as(isize, @as(c_int, 8))))) -% @as(usize, @bitCast(@as(isize, @as(c_int, 2)))))) (@as(usize, @bitCast(@as(l_mem, @bitCast(@as(isize, @as(c_int, 1)))) << @intCast(@as(c_int, @bitCast(@as(c_uint, g.*.gcstepsize)))))) / @sizeOf(TValue)) *% @as(usize, @bitCast(@as(isize, stepmul))) else @as(usize, @bitCast(@as(l_mem, @bitCast(~@as(lu_mem, @bitCast(@as(isize, @as(c_int, 0)))) >> @intCast(1)))))));
     _ = &stepsize;
     var gc_loop_count: u32 = 0;
     while (true) {
@@ -3437,7 +3437,7 @@ pub fn incstep(arg_L: [*c]lua_State, arg_g: [*c]global_State) callconv(.c) void 
     if (@as(c_int, @bitCast(@as(c_uint, g.*.gcstate))) == @as(c_int, 8)) {
         setpause(g);
     } else {
-        debt = @as(l_mem, @bitCast(@as(c_ulong, @bitCast(@divTrunc(debt, @as(l_mem, @bitCast(@as(c_long, stepmul)))))) *% @sizeOf(TValue)));
+        debt = @as(l_mem, @bitCast(@as(usize, @bitCast(@divTrunc(debt, @as(l_mem, @bitCast(@as(isize, stepmul)))))) *% @sizeOf(TValue)));
         luaE_setdebt(g, debt);
     }
 }

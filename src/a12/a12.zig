@@ -493,7 +493,7 @@ pub export fn a12_unpack(S: [*c]struct_a12_state, buf: [*c]const u8, buf_sz: usi
     if (@as(c_int, @bitCast(@as(c_uint, S.*.left))) == 0) {
         reset_state(S);
     }
-    const ntr: usize = if (buf_sz_ > @as(usize, @bitCast(@as(c_ulong, S.*.left)))) @as(usize, @bitCast(@as(c_ulong, S.*.left))) else buf_sz_;
+    const ntr: usize = if (buf_sz_ > @as(usize, @bitCast(@as(usize, S.*.left)))) @as(usize, @bitCast(@as(usize, S.*.left))) else buf_sz_;
     _ = memcpy(@as(?*anyopaque, @ptrCast(&S.*.decode[S.*.decode_pos])), @as(?*const anyopaque, @ptrCast(buf)), ntr);
     S.*.left -%= @as(u16, @bitCast(@as(c_ushort, @truncate(ntr))));
     S.*.decode_pos +%= @as(u16, @bitCast(@as(c_ushort, @truncate(ntr))));
@@ -719,7 +719,7 @@ pub export fn a12_enqueue_blob(S: [*c]struct_a12_state, buf: [*c]const u8, buf_s
     next.*.*.left = buf_sz;
     next.*.*.identifier = id;
     next.*.*.type = @"type";
-    next.*.*.streamid = @as(u64, @bitCast(@as(c_ulong, id)));
+    next.*.*.streamid = @as(u64, @bitCast(@as(usize, id)));
     _ = memcpy(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&next.*.*.extid[0]))))), @as(?*const anyopaque, @ptrCast(extid)), 16);
     var hash: blake3_hasher = undefined;
     blake3_hasher_init(&hash);
@@ -741,7 +741,7 @@ pub export fn a12_request_file(S: [*c]struct_a12_state, chid: u8, ns: u16, id: u
                         .unnamed_0 = union_unnamed_26{
                             .bchunk = struct_unnamed_31{
                                 .unnamed_0 = union_unnamed_32{
-                                    .ns = @as(u64, @bitCast(@as(c_ulong, ns))),
+                                    .ns = @as(u64, @bitCast(@as(usize, ns))),
                                 },
                                 .input = 1,
                                 .hint = std.mem.zeroes(u8),
@@ -980,7 +980,7 @@ pub export fn a12_channel_enqueue(S: [*c]struct_a12_state, ev: [*c]struct_arcan_
                     return true;
                 },
                 @as(c_uint, @bitCast(@as(c_int, 8))) => {
-                    a12_enqueue_bstream_tagged(S, ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[0].iv, A12_BTYPE_BLOB, @as(u32, @bitCast(ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[3].iv)), ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[1].iv <= 0, @as(usize, @bitCast(@as(c_long, ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[1].iv))), @as([*c]u8, @ptrCast(@alignCast(&empty_ext[0]))), ev);
+                    a12_enqueue_bstream_tagged(S, ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[0].iv, A12_BTYPE_BLOB, @as(u32, @bitCast(ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[3].iv)), ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[1].iv <= 0, @as(usize, @bitCast(@as(isize, ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[1].iv))), @as([*c]u8, @ptrCast(@alignCast(&empty_ext[0]))), ev);
                     return true;
                 },
                 @as(c_uint, @bitCast(@as(c_int, 25))) => {
@@ -1040,10 +1040,10 @@ pub export fn a12_channel_vframe(S: [*c]struct_a12_state, vb: ?*struct_shmifsrv_
     var w: usize = vb.?.*.w;
     var h: usize = vb.?.*.h;
     if (vb.?.*.flags.subregion) {
-        x = @as(usize, @bitCast(@as(c_ulong, vb.?.*.region.x1)));
-        y = @as(usize, @bitCast(@as(c_ulong, vb.?.*.region.y1)));
-        w = @as(usize, @bitCast(@as(c_ulong, vb.?.*.region.x2))) -% x;
-        h = @as(usize, @bitCast(@as(c_ulong, vb.?.*.region.y2))) -% y;
+        x = @as(usize, @bitCast(@as(usize, vb.?.*.region.x1)));
+        y = @as(usize, @bitCast(@as(usize, vb.?.*.region.y1)));
+        w = @as(usize, @bitCast(@as(usize, vb.?.*.region.x2))) -% x;
+        h = @as(usize, @bitCast(@as(usize, vb.?.*.region.y2))) -% y;
     }
     if (!(w != 0) or !(h != 0)) {
         while (true) {
@@ -1073,7 +1073,7 @@ pub export fn a12_channel_vframe(S: [*c]struct_a12_state, vb: ?*struct_shmifsrv_
         }
         if (!false) break;
     }
-    const now: usize = @as(usize, @bitCast(@as(c_ulong, @truncate(arcan_timemillis()))));
+    const now: usize = @as(usize, @bitCast(@as(usize, @truncate(arcan_timemillis()))));
     if (vb.?.*.flags.compressed) {
         a12int_encode_passthrough(S, vb, opts, sid, x, y, w, h, chunk_sz, S.*.out_channel);
     } else {
@@ -1124,12 +1124,12 @@ pub export fn a12_channel_vframe(S: [*c]struct_a12_state, vb: ?*struct_shmifsrv_
             break;
         }
     }
-    const then: usize = @as(usize, @bitCast(@as(c_ulong, @truncate(arcan_timemillis()))));
+    const then: usize = @as(usize, @bitCast(@as(usize, @truncate(arcan_timemillis()))));
     if (then > now) {
         S.*.stats.ms_vframe = then -% now;
         S.*.stats.ms_vframe_px = @as(f32, @floatFromInt(then -% now)) / @as(f32, @floatFromInt(w *% h));
     }
-    return if (S.*.out_stream == @as(u64, @bitCast(@as(c_ulong, sid)))) 0 else 1;
+    return if (S.*.out_stream == @as(u64, @bitCast(@as(usize, sid)))) 0 else 1;
 }
 pub export fn a12_channel_new(S: [*c]struct_a12_state, chid: u8, segkind: u8, cookie: u32) void {
     var outb: [128]u8 = undefined;
@@ -1148,7 +1148,7 @@ pub export fn a12_channel_shutdown(S: [*c]struct_a12_state, last_words: [*c]cons
     step_sequence(S, @as([*c]u8, @ptrCast(@alignCast(&outb[0]))));
     outb[16] = @as(u8, @bitCast(@as(i8, @truncate(S.*.out_channel))));
     outb[17] = @as(u8, @bitCast(@as(i8, @truncate(COMMAND_SHUTDOWN))));
-    _ = snprintf(@as([*c]u8, @ptrCast(@alignCast(&outb[18]))), @as(c_ulong, @bitCast(@as(c_long, 128 - 19))), "%s", last_words);
+    _ = snprintf(@as([*c]u8, @ptrCast(@alignCast(&outb[18]))), @as(usize, @bitCast(@as(isize, 128 - 19))), "%s", last_words);
     while (true) {
         if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_SYSTEM) != 0)) {
             _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:channel open, add control packet\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_SYSTEM), "a12_channel_shutdown");
@@ -1243,7 +1243,7 @@ pub export fn a12_btransfer_outfd(S: [*c]struct_a12_state) c_int {
     return if (S.*.pending_out != null) S.*.pending_out.*.fd else -1;
 }
 pub export fn a12_shutdown_id(S: [*c]struct_a12_state, id: u32) void {
-    S.*.shutdown_id = @as(i64, @bitCast(@as(c_ulong, id)));
+    S.*.shutdown_id = @as(i64, @bitCast(@as(usize, id)));
 }
 pub export fn a12_get_endpoint(S: [*c]struct_a12_state) [*c]const u8 {
     return if (S != null) S.*.endpoint else null;
@@ -1293,10 +1293,10 @@ pub export fn a12_trace_tag(S: [*c]struct_a12_state, tag: [*c]const u8) void {
 }
 pub export fn a12int_group_tostr(group: c_int) [*c]const u8 {
     const ind: c_uint = i_log2(@as(u32, @bitCast(group)));
-    if (@as(c_ulong, @bitCast(@as(c_ulong, ind))) >= (@sizeOf([13][*c]const u8) / @sizeOf([*c]const u8))) return "bad" else return groups[ind];
+    if (@as(usize, @bitCast(@as(usize, ind))) >= (@sizeOf([13][*c]const u8) / @sizeOf([*c]const u8))) return "bad" else return groups[ind];
     return null;
 }
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const max_align_t = extern struct {
     __clang_max_align_nonce1: c_longlong align(8) = std.mem.zeroes(c_longlong),
     __clang_max_align_nonce2: c_longdouble align(16) = std.mem.zeroes(c_longdouble),
@@ -1311,16 +1311,16 @@ pub const blake3_hasher_update = c.blake3_hasher_update;
 pub const blake3_hasher_finalize = c.blake3_hasher_finalize;
 pub const blake3_hasher_finalize_seek = c.blake3_hasher_finalize_seek;
 pub export fn unpack_u64(dst: [*c]u64, inbuf: [*c]u8) callconv(.c) void {
-    dst.* = (((((((@as(u64, @bitCast(@as(c_ulong, inbuf[0]))) << @intCast(0)) | (@as(u64, @bitCast(@as(c_ulong, inbuf[1]))) << @intCast(8))) | (@as(u64, @bitCast(@as(c_ulong, inbuf[2]))) << @intCast(16))) | (@as(u64, @bitCast(@as(c_ulong, inbuf[3]))) << @intCast(24))) | (@as(u64, @bitCast(@as(c_ulong, inbuf[4]))) << @intCast(32))) | (@as(u64, @bitCast(@as(c_ulong, inbuf[5]))) << @intCast(40))) | (@as(u64, @bitCast(@as(c_ulong, inbuf[6]))) << @intCast(48))) | (@as(u64, @bitCast(@as(c_ulong, inbuf[7]))) << @intCast(56));
+    dst.* = (((((((@as(u64, @bitCast(@as(usize, inbuf[0]))) << @intCast(0)) | (@as(u64, @bitCast(@as(usize, inbuf[1]))) << @intCast(8))) | (@as(u64, @bitCast(@as(usize, inbuf[2]))) << @intCast(16))) | (@as(u64, @bitCast(@as(usize, inbuf[3]))) << @intCast(24))) | (@as(u64, @bitCast(@as(usize, inbuf[4]))) << @intCast(32))) | (@as(u64, @bitCast(@as(usize, inbuf[5]))) << @intCast(40))) | (@as(u64, @bitCast(@as(usize, inbuf[6]))) << @intCast(48))) | (@as(u64, @bitCast(@as(usize, inbuf[7]))) << @intCast(56));
 }
 pub fn unpack_u32(dst: [*c]u32, inbuf: [*c]u8) callconv(.c) void {
-    dst.* = @as(u32, @bitCast(@as(c_uint, @truncate((((@as(u64, @bitCast(@as(c_ulong, inbuf[0]))) << @intCast(0)) | (@as(u64, @bitCast(@as(c_ulong, inbuf[1]))) << @intCast(8))) | (@as(u64, @bitCast(@as(c_ulong, inbuf[2]))) << @intCast(16))) | (@as(u64, @bitCast(@as(c_ulong, inbuf[3]))) << @intCast(24))))));
+    dst.* = @as(u32, @bitCast(@as(c_uint, @truncate((((@as(u64, @bitCast(@as(usize, inbuf[0]))) << @intCast(0)) | (@as(u64, @bitCast(@as(usize, inbuf[1]))) << @intCast(8))) | (@as(u64, @bitCast(@as(usize, inbuf[2]))) << @intCast(16))) | (@as(u64, @bitCast(@as(usize, inbuf[3]))) << @intCast(24))))));
 }
 pub fn unpack_u16(dst: [*c]u16, inbuf: [*c]u8) callconv(.c) void {
-    dst.* = @as(u16, @bitCast(@as(c_ushort, @truncate((@as(u64, @bitCast(@as(c_ulong, inbuf[0]))) << @intCast(0)) | (@as(u64, @bitCast(@as(c_ulong, inbuf[1]))) << @intCast(8))))));
+    dst.* = @as(u16, @bitCast(@as(c_ushort, @truncate((@as(u64, @bitCast(@as(usize, inbuf[0]))) << @intCast(0)) | (@as(u64, @bitCast(@as(usize, inbuf[1]))) << @intCast(8))))));
 }
 pub fn unpack_s16(dst: [*c]i16, inbuf: [*c]u8) callconv(.c) void {
-    dst.* = @as(i16, @bitCast(@as(c_short, @truncate((@as(i64, @bitCast(@as(c_ulong, inbuf[0]))) << @intCast(0)) | (@as(i64, @bitCast(@as(c_ulong, inbuf[1]))) << @intCast(8))))));
+    dst.* = @as(i16, @bitCast(@as(c_short, @truncate((@as(i64, @bitCast(@as(usize, inbuf[0]))) << @intCast(0)) | (@as(i64, @bitCast(@as(usize, inbuf[1]))) << @intCast(8))))));
 }
 pub export fn pack_u64(src: u64, outb: [*c]u8) callconv(.c) void {
     outb[0] = @as(u8, @truncate(src >> @intCast(0)));
@@ -1396,12 +1396,12 @@ pub export fn a12int_header_size(kind: c_int) usize {
     _ = blk: {
         _ = @sizeOf(c_int);
         break :blk blk_1: {
-            break :blk_1 if (@as(c_ulong, @bitCast(@as(c_long, kind))) < ((@sizeOf([8]c_int) / @sizeOf(c_int)) / @as(usize, @intFromBool(!((@sizeOf([8]c_int) % @sizeOf(c_int)) != 0))))) {} else {
+            break :blk_1 if (@as(usize, @bitCast(@as(isize, kind))) < ((@sizeOf([8]c_int) / @sizeOf(c_int)) / @as(usize, @intFromBool(!((@sizeOf([8]c_int) % @sizeOf(c_int)) != 0))))) {} else {
                 __assert_fail("kind < COUNT_OF(header_sizes)", "src/a12/a12.c", @as(c_uint, @bitCast(@as(c_int, 65))), "size_t a12int_header_size(int)");
             };
         };
     };
-    return @as(usize, @bitCast(@as(c_long, header_sizes[@as(c_uint, @intCast(kind))])));
+    return @as(usize, @bitCast(@as(isize, header_sizes[@as(c_uint, @intCast(kind))])));
 }
 pub const STREAM_FAIL_OUTDATED: c_int = 0;
 pub const STREAM_FAIL_UNKNOWN: c_int = 1;
@@ -1436,7 +1436,7 @@ pub export fn a12int_append_out(S: [*c]struct_a12_state, @"type": u8, out: [*c]c
         }
         if (!false) break;
     }
-    const required: usize = (((S.*.buf_ofs +% @as(usize, @bitCast(@as(c_long, header_sizes[STATE_NOPACKET])))) +% out_sz) +% prepend_sz) +% 1;
+    const required: usize = (((S.*.buf_ofs +% @as(usize, @bitCast(@as(isize, header_sizes[STATE_NOPACKET])))) +% out_sz) +% prepend_sz) +% 1;
     S.*.bufs[S.*.buf_ind] = grow_array(S, S.*.bufs[S.*.buf_ind], &S.*.buf_sz[S.*.buf_ind], required, @as(c_int, @bitCast(@as(c_uint, S.*.buf_ind))));
     if (S.*.buf_sz[S.*.buf_ind] < required) {
         while (true) {
@@ -2305,7 +2305,7 @@ pub fn register_bchunk_name(S: [*c]struct_a12_state, ev: [*c]struct_arcan_event)
                         .unnamed_0 = union_unnamed_26{
                             .bchunk = struct_unnamed_31{
                                 .unnamed_0 = union_unnamed_32{
-                                    .ns = @as(u64, @bitCast(@as(c_ulong, ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[3].uiv))),
+                                    .ns = @as(u64, @bitCast(@as(usize, ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[3].uiv))),
                                 },
                                 .input = @as(u8, @intFromBool(ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.kind == @as(c_uint, @bitCast(TARGET_COMMAND_BCHUNK_IN)))),
                                 .hint = std.mem.zeroes(u8),
@@ -2795,7 +2795,7 @@ pub fn step_pqc_xfer(S: [*c]struct_a12_state, dst: [*c]u8) callconv(.c) c_int {
     }
     const ofs: usize = @intCast(@as(c_int, @bitCast(@as(c_uint, ct_ind))) * 108);
     if (@as(c_int, @bitCast(@as(c_uint, ct_ind))) == 10) {
-        _ = memcpy(@as(?*anyopaque, @ptrCast(&dst[ofs])), @as(?*const anyopaque, @ptrCast(&S.*.decode[20])), @as(c_ulong, @bitCast(@as(c_long, if (@as(c_int, @bitCast(@as(c_uint, mode))) == REKEY_MODE_KEM768_CIPHERTEXT) @as(c_int, 8) else @as(c_int, 104)))));
+        _ = memcpy(@as(?*anyopaque, @ptrCast(&dst[ofs])), @as(?*const anyopaque, @ptrCast(&S.*.decode[20])), @as(usize, @bitCast(@as(isize, if (@as(c_int, @bitCast(@as(c_uint, mode))) == REKEY_MODE_KEM768_CIPHERTEXT) @as(c_int, 8) else @as(c_int, 104)))));
         S.*.keys.pqc_xfer_ind = 0;
         while (true) {
             if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_CRYPTO) != 0)) {
@@ -2865,7 +2865,7 @@ pub fn command_cancelstream(S: [*c]struct_a12_state, streamid: u32, reason: u8, 
         return;
     }
     while (node != null) {
-        if (node.*.streamid == @as(u64, @bitCast(@as(c_ulong, streamid)))) {
+        if (node.*.streamid == @as(u64, @bitCast(@as(usize, streamid)))) {
             while (true) {
                 if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_BTRANSFER) != 0)) {
                     _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=cancelled:stream=%u:source=remote\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_BTRANSFER), "command_cancelstream", streamid);
@@ -3067,7 +3067,7 @@ pub fn command_binarystream(S: [*c]struct_a12_state) callconv(.c) void {
     unpack_u32(&streamid, &S.*.decode[18]);
     var swallow: bool = false;
     var sc: c_int = A12_BHANDLER_DONTWANT;
-    if ((S.*.pending_in != null) and (S.*.pending_in.*.streamid == @as(u64, @bitCast(@as(c_ulong, streamid))))) {
+    if ((S.*.pending_in != null) and (S.*.pending_in.*.streamid == @as(u64, @bitCast(@as(usize, streamid))))) {
         bframe.*.tmp_fd = S.*.pending_in.*.fd;
         swallow = true;
         sc = A12_BHANDLER_NEWFD;
@@ -3080,7 +3080,7 @@ pub fn command_binarystream(S: [*c]struct_a12_state) callconv(.c) void {
     } else {
         bframe.*.tmp_fd = -1;
     }
-    bframe.*.streamid = @as(i64, @bitCast(@as(c_ulong, streamid)));
+    bframe.*.streamid = @as(i64, @bitCast(@as(usize, streamid)));
     unpack_u64(&bframe.*.size, &S.*.decode[22]);
     bframe.*.type = @as(c_int, @bitCast(@as(c_uint, S.*.decode[30])));
     unpack_u32(&bframe.*.identifier, &S.*.decode[31]);
@@ -3195,7 +3195,7 @@ fn update_proxy_acont(channel: ?*struct_a12_channel, aframe: [*c]struct_audio_fr
     } else {
         ch.cont.*.unnamed_1.audp = ch.raw.request_audio_buffer.?(
             @as(usize, aframe.*.channels),
-            @as(usize, @bitCast(@as(c_ulong, aframe.*.rate))),
+            @as(usize, @bitCast(@as(usize, aframe.*.rate))),
             @sizeOf(shmif_asample) * @as(usize, aframe.*.channels),
             ch.raw.tag);
         if (ch.cont.*.unnamed_1.audp == null) {
@@ -3333,7 +3333,7 @@ pub fn command_videoframe(S: [*c]struct_a12_state) callconv(.c) void {
     }
     if (channel.?.*.active == CHANNEL_RAW) {
         update_proxy_vcont(channel, vframe);
-    } else if (((@as(c_int, @intFromBool(hints_changed)) != 0) or (@as(usize, @bitCast(@as(c_ulong, vframe.*.sw))) != cont.*.w)) or (@as(usize, @bitCast(@as(c_ulong, vframe.*.sh))) != cont.*.h)) {
+    } else if (((@as(c_int, @intFromBool(hints_changed)) != 0) or (@as(usize, @bitCast(@as(usize, vframe.*.sw))) != cont.*.w)) or (@as(usize, @bitCast(@as(usize, vframe.*.sh))) != cont.*.h)) {
         {
             const smon_a = @import("shmif_monitor");
             const snprintf_a = @extern(*const fn ([*c]u8, usize, [*c]const u8, ...) callconv(.c) c_int, .{ .name = "snprintf" });
@@ -3352,7 +3352,7 @@ pub fn command_videoframe(S: [*c]struct_a12_state) callconv(.c) void {
                 @as(c_int, @intCast(cont.*.w)), @as(c_int, @intCast(cont.*.h)));
             smon_b.emitLuaTag(@ptrCast(&buf_b));
         }
-        if ((@as(usize, @bitCast(@as(c_ulong, vframe.*.sw))) != cont.*.w) or (@as(usize, @bitCast(@as(c_ulong, vframe.*.sh))) != cont.*.h)) {
+        if ((@as(usize, @bitCast(@as(usize, vframe.*.sw))) != cont.*.w) or (@as(usize, @bitCast(@as(usize, vframe.*.sh))) != cont.*.h)) {
             while (true) {
                 if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_SYSTEM) != 0)) {
                     _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:parent size rejected\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_SYSTEM), "command_videoframe");
@@ -3362,14 +3362,14 @@ pub fn command_videoframe(S: [*c]struct_a12_state) callconv(.c) void {
             vframe.*.commit = 255;
         } else while (true) {
             if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_VIDEO) != 0)) {
-                _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=resized:channel=%d:hints=%d:new_w=%zu:new_h=%zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_VIDEO), "command_videoframe", @as(c_int, @bitCast(@as(c_uint, ch))), @as(c_int, @bitCast(@as(c_uint, cont.*.hints))), @as(usize, @bitCast(@as(c_ulong, vframe.*.sw))), @as(usize, @bitCast(@as(c_ulong, vframe.*.sh))));
+                _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=resized:channel=%d:hints=%d:new_w=%zu:new_h=%zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_VIDEO), "command_videoframe", @as(c_int, @bitCast(@as(c_uint, ch))), @as(c_int, @bitCast(@as(c_uint, cont.*.hints))), @as(usize, @bitCast(@as(usize, vframe.*.sw))), @as(usize, @bitCast(@as(usize, vframe.*.sh))));
             }
             if (!false) break;
         }
     }
     while (true) {
         if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_VIDEO) != 0)) {
-            _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=frame_header:method=%d:source_w=%zu:source_h=%zu:w=%zu:h=%zu:x=%zu,y=%zu:bytes_in=%zu:bytes_out=%zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_VIDEO), "command_videoframe", @as(c_int, @bitCast(@as(c_uint, vframe.*.postprocess))), @as(usize, @bitCast(@as(c_ulong, vframe.*.sw))), @as(usize, @bitCast(@as(c_ulong, vframe.*.sh))), @as(usize, @bitCast(@as(c_ulong, vframe.*.w))), @as(usize, @bitCast(@as(c_ulong, vframe.*.h))), @as(usize, @bitCast(@as(c_ulong, vframe.*.x))), @as(usize, @bitCast(@as(c_ulong, vframe.*.y))), @as(usize, @bitCast(@as(c_ulong, vframe.*.inbuf_sz))), @as(usize, @bitCast(@as(c_ulong, vframe.*.expanded_sz))));
+            _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=frame_header:method=%d:source_w=%zu:source_h=%zu:w=%zu:h=%zu:x=%zu,y=%zu:bytes_in=%zu:bytes_out=%zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_VIDEO), "command_videoframe", @as(c_int, @bitCast(@as(c_uint, vframe.*.postprocess))), @as(usize, @bitCast(@as(usize, vframe.*.sw))), @as(usize, @bitCast(@as(usize, vframe.*.sh))), @as(usize, @bitCast(@as(usize, vframe.*.w))), @as(usize, @bitCast(@as(usize, vframe.*.h))), @as(usize, @bitCast(@as(usize, vframe.*.x))), @as(usize, @bitCast(@as(usize, vframe.*.y))), @as(usize, @bitCast(@as(usize, vframe.*.inbuf_sz))), @as(usize, @bitCast(@as(usize, vframe.*.expanded_sz))));
         }
         if (!false) break;
     }
@@ -3377,15 +3377,15 @@ pub fn command_videoframe(S: [*c]struct_a12_state) callconv(.c) void {
         vframe.*.commit = 255;
         while (true) {
             if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_SYSTEM) != 0)) {
-                _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=error:status=EINVAL:x=%zu:y=%zu:w=%zu:h=%zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_SYSTEM), "command_videoframe", @as(usize, @bitCast(@as(c_ulong, vframe.*.x))), @as(usize, @bitCast(@as(c_ulong, vframe.*.y))), @as(usize, @bitCast(@as(c_ulong, vframe.*.w))), @as(usize, @bitCast(@as(c_ulong, vframe.*.h))));
+                _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=error:status=EINVAL:x=%zu:y=%zu:w=%zu:h=%zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_SYSTEM), "command_videoframe", @as(usize, @bitCast(@as(usize, vframe.*.x))), @as(usize, @bitCast(@as(usize, vframe.*.y))), @as(usize, @bitCast(@as(usize, vframe.*.w))), @as(usize, @bitCast(@as(usize, vframe.*.h))));
             }
             if (!false) break;
         }
         return;
     }
     if (((@as(c_int, @bitCast(@as(c_uint, vframe.*.postprocess))) == POSTPROCESS_VIDEO_RGBA) or (@as(c_int, @bitCast(@as(c_uint, vframe.*.postprocess))) == POSTPROCESS_VIDEO_RGB565)) or (@as(c_int, @bitCast(@as(c_uint, vframe.*.postprocess))) == POSTPROCESS_VIDEO_RGB)) {
-        vframe.*.row_left = @as(usize, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, vframe.*.w))) - @as(c_int, @bitCast(@as(c_uint, vframe.*.x))))));
-        vframe.*.out_pos = (@as(usize, @bitCast(@as(c_ulong, vframe.*.y))) *% cont.*.pitch) +% @as(usize, @bitCast(@as(c_ulong, vframe.*.x)));
+        vframe.*.row_left = @as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, vframe.*.w))) - @as(c_int, @bitCast(@as(c_uint, vframe.*.x))))));
+        vframe.*.out_pos = (@as(usize, @bitCast(@as(usize, vframe.*.y))) *% cont.*.pitch) +% @as(usize, @bitCast(@as(usize, vframe.*.x)));
         while (true) {
             if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_TRANSFER) != 0)) {
                 _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:row-length: %zu at buffer pos %u\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_TRANSFER), "command_videoframe", vframe.*.row_left, vframe.*.inbuf_pos);
@@ -3393,12 +3393,12 @@ pub fn command_videoframe(S: [*c]struct_a12_state) callconv(.c) void {
             if (!false) break;
         }
     } else {
-        const ulim: usize = @as(c_ulong, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, vframe.*.w))) * @as(c_int, @bitCast(@as(c_uint, vframe.*.h)))))) *% @sizeOf(shmif_pixel);
-        if (@as(usize, @bitCast(@as(c_ulong, vframe.*.expanded_sz))) > ulim) {
+        const ulim: usize = @as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, vframe.*.w))) * @as(c_int, @bitCast(@as(c_uint, vframe.*.h)))))) *% @sizeOf(shmif_pixel);
+        if (@as(usize, @bitCast(@as(usize, vframe.*.expanded_sz))) > ulim) {
             vframe.*.commit = 255;
             while (true) {
                 if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_SYSTEM) != 0)) {
-                    _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=error:status=EINVAL:expanded=%zu:limit=%zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_SYSTEM), "command_videoframe", @as(usize, @bitCast(@as(c_ulong, vframe.*.expanded_sz))), ulim);
+                    _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=error:status=EINVAL:expanded=%zu:limit=%zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_SYSTEM), "command_videoframe", @as(usize, @bitCast(@as(usize, vframe.*.expanded_sz))), ulim);
                 }
                 if (!false) break;
             }
@@ -3415,7 +3415,7 @@ pub fn command_videoframe(S: [*c]struct_a12_state) callconv(.c) void {
             vframe.*.inbuf_pos = 0;
             return;
         }
-        vframe.*.out_pos = (@as(usize, @bitCast(@as(c_ulong, vframe.*.y))) *% cont.*.pitch) +% @as(usize, @bitCast(@as(c_ulong, vframe.*.x)));
+        vframe.*.out_pos = (@as(usize, @bitCast(@as(usize, vframe.*.y))) *% cont.*.pitch) +% @as(usize, @bitCast(@as(usize, vframe.*.x)));
         vframe.*.inbuf_pos = 0;
         vframe.*.inbuf = @as([*c]u8, @ptrCast(@alignCast(malloc(vframe.*.inbuf_sz))));
         if (vframe.*.inbuf == null) {
@@ -3424,7 +3424,7 @@ pub fn command_videoframe(S: [*c]struct_a12_state) callconv(.c) void {
             }
             return;
         }
-        vframe.*.row_left = @as(usize, @bitCast(@as(c_ulong, vframe.*.w)));
+        vframe.*.row_left = @as(usize, @bitCast(@as(usize, vframe.*.w)));
         if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_VIDEO) != 0)) {
             _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:compressed buffer in (%u) to offset (%zu)\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_VIDEO), "command_videoframe", vframe.*.inbuf_sz, vframe.*.out_pos);
         }
@@ -3523,7 +3523,7 @@ pub fn a12_enqueue_bstream_in(S: [*c]struct_a12_state, fd: c_int, @"type": c_int
                         .unnamed_0 = union_unnamed_26{
                             .bchunk = struct_unnamed_31{
                                 .unnamed_0 = union_unnamed_32{
-                                    .ns = @as(u64, @bitCast(@as(c_ulong, ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[3].uiv))),
+                                    .ns = @as(u64, @bitCast(@as(usize, ev.*.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[3].uiv))),
                                 },
                                 .input = 1,
                                 .hint = 0,
@@ -3910,7 +3910,7 @@ pub fn process_hello_auth(S: [*c]struct_a12_state) callconv(.c) void {
 }
 pub fn command_pingpacket(S: [*c]struct_a12_state, sid: u32) callconv(.c) void {
     if (sid == 0) return;
-    if (@as(i64, @bitCast(@as(c_ulong, sid))) == S.*.shutdown_id) {
+    if (@as(i64, @bitCast(@as(usize, sid))) == S.*.shutdown_id) {
         S.*.state = @as(u8, @bitCast(@as(i8, @truncate(STATE_BROKEN))));
         if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_SYSTEM) != 0)) {
             _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:terminal_ping=%u\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_SYSTEM), "command_pingpacket", sid);
@@ -3947,7 +3947,7 @@ pub fn command_pingpacket(S: [*c]struct_a12_state, sid: u32) callconv(.c) void {
             }
             return;
         }
-        if (i < @as(usize, @bitCast(@as(c_ulong, latest)))) {
+        if (i < @as(usize, @bitCast(@as(usize, latest)))) {
             i = wnd_sz -% 2;
         }
     }
@@ -3958,7 +3958,7 @@ pub fn command_pingpacket(S: [*c]struct_a12_state, sid: u32) callconv(.c) void {
     }
     S.*.congestion_stats.pending = to_move;
     _ = memmove(@as(?*anyopaque, @ptrCast(@as([*c]u32, @ptrCast(@alignCast(&S.*.congestion_stats.frame_window))))), @as(?*const anyopaque, @ptrCast(&S.*.congestion_stats.frame_window[i_start])), to_move *% @sizeOf(u32));
-    S.*.stats.vframe_backpressure = to_move +% @as(usize, @bitCast(@as(c_ulong, S.*.congestion_stats.frame_window[0] -% sid)));
+    S.*.stats.vframe_backpressure = to_move +% @as(usize, @bitCast(@as(usize, S.*.congestion_stats.frame_window[0] -% sid)));
     {
         i = to_move;
         while (i < wnd_sz) : (i +%= 1) {
@@ -4042,7 +4042,7 @@ pub fn add_dirent(S: [*c]struct_a12_state) callconv(.c) void {
     unpack_u64(&new.*.buf_sz, &S.*.decode[28]);
     _ = memcpy(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&new.*.appl.name))))), @as(?*const anyopaque, @ptrCast(&S.*.decode[36])), 18);
     _ = memcpy(@as(?*anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&new.*.appl.short_descr))))), @as(?*const anyopaque, @ptrCast(&S.*.decode[55])), 69);
-    new.*.update_ts = @as(u64, @bitCast(@as(c_ulong, @truncate(arcan_timemillis()))));
+    new.*.update_ts = @as(u64, @bitCast(@as(usize, @truncate(arcan_timemillis()))));
     if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_DIRECTORY) != 0)) {
         _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:dir_item:id=%u:name=%s\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_DIRECTORY), "add_dirent", @as(c_int, @bitCast(@as(c_uint, new.*.identifier))), @as([*c]u8, @ptrCast(@alignCast(&new.*.appl.name))));
     }
@@ -4177,7 +4177,7 @@ pub fn progress_pending_in(S: [*c]struct_a12_state, ch: u8, progress: f32) callc
     }
 }
 pub fn process_control(S: [*c]struct_a12_state, on_event: ?*const fn ([*c]struct_arcan_shmif_cont, c_int, [*c]struct_arcan_event, ?*anyopaque) callconv(.c) void, tag: ?*anyopaque) callconv(.c) void {
-    if (!authdec_buffer("process_control", S, @as(usize, @bitCast(@as(c_long, header_sizes[S.*.state]))))) {
+    if (!authdec_buffer("process_control", S, @as(usize, @bitCast(@as(isize, header_sizes[S.*.state]))))) {
         fail_state(S, "control-bad-mac");
         return;
     }
@@ -4315,7 +4315,7 @@ pub fn process_control(S: [*c]struct_a12_state, on_event: ?*const fn ([*c]struct
     reset_state(S);
 }
 pub fn process_event(S: [*c]struct_a12_state, tag: ?*anyopaque, on_event: ?*const fn ([*c]struct_arcan_shmif_cont, c_int, [*c]struct_arcan_event, ?*anyopaque) callconv(.c) void) callconv(.c) void {
-    if (!authdec_buffer("process_event", S, @as(usize, @bitCast(@as(c_long, header_sizes[S.*.state]))))) {
+    if (!authdec_buffer("process_event", S, @as(usize, @bitCast(@as(isize, header_sizes[S.*.state]))))) {
         while (true) {
             if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_CRYPTO) != 0)) {
                 _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:MAC mismatch on event packet\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_CRYPTO), "process_event");
@@ -4328,7 +4328,7 @@ pub fn process_event(S: [*c]struct_a12_state, tag: ?*anyopaque, on_event: ?*cons
     const channel: u8 = S.*.decode[8];
     var aev: struct_arcan_event = undefined;
     unpack_u64(&S.*.last_seen_seqnr, @as([*c]u8, @ptrCast(@alignCast(&S.*.decode[0]))));
-    if (@as(isize, @bitCast(@as(c_long, -1))) == arcan_shmif_eventunpack(&S.*.decode[9], @as(usize, @bitCast(@as(c_long, (@as(c_int, @bitCast(@as(c_uint, S.*.decode_pos))) - 8) - 1))), &aev)) {
+    if (@as(isize, @bitCast(@as(isize, -1))) == arcan_shmif_eventunpack(&S.*.decode[9], @as(usize, @bitCast(@as(isize, (@as(c_int, @bitCast(@as(c_uint, S.*.decode_pos))) - 8) - 1))), &aev)) {
         while (true) {
             if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_SYSTEM) != 0)) {
                 _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:broken event packet received\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_SYSTEM), "process_event");
@@ -4340,7 +4340,7 @@ pub fn process_event(S: [*c]struct_a12_state, tag: ?*anyopaque, on_event: ?*cons
     const forward: bool = true;
     var upid: i64 = S.*.channels[channel].unpack_state.bframe.streamid;
     if (upid <= 0) {
-        upid = @as(i64, @bitCast(@as(c_ulong, S.*.channels[channel].unpack_state.last_bframe_id)));
+        upid = @as(i64, @bitCast(@as(usize, S.*.channels[channel].unpack_state.last_bframe_id)));
     }
     while (true) {
         if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_EVENT) != 0)) {
@@ -4349,7 +4349,7 @@ pub fn process_event(S: [*c]struct_a12_state, tag: ?*anyopaque, on_event: ?*cons
         if (!false) break;
     }
     if (@as(c_int, @bitCast(@as(c_uint, aev.unnamed_0.unnamed_0.category))) == EVENT_EXTERNAL) {
-        const id: i64 = @as(i64, @bitCast(@as(c_ulong, aev.unnamed_0.unnamed_0.unnamed_0.ext.unnamed_0.streamstat.identifier)));
+        const id: i64 = @as(i64, @bitCast(@as(usize, aev.unnamed_0.unnamed_0.unnamed_0.ext.unnamed_0.streamstat.identifier)));
         if (aev.unnamed_0.unnamed_0.unnamed_0.ext.kind == @as(c_uint, @bitCast(EVENT_EXTERNAL_STREAMSTATUS))) {
             while (true) {
                 if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_BTRANSFER) != 0)) {
@@ -4363,7 +4363,7 @@ pub fn process_event(S: [*c]struct_a12_state, tag: ?*anyopaque, on_event: ?*cons
         }
     } else if (@as(c_int, @bitCast(@as(c_uint, aev.unnamed_0.unnamed_0.category))) == EVENT_TARGET) {
         if (aev.unnamed_0.unnamed_0.unnamed_0.tgt.kind == @as(c_uint, @bitCast(TARGET_COMMAND_REQFAIL))) {
-            const id: i64 = @as(i64, @bitCast(@as(c_long, aev.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[0].iv)));
+            const id: i64 = @as(i64, @bitCast(@as(isize, aev.unnamed_0.unnamed_0.unnamed_0.tgt.ioevs[0].iv)));
             while (true) {
                 if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_BTRANSFER) != 0)) {
                     _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:reqfail:ch=%u:current_id=%ld:unpack_id=%ld\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_BTRANSFER), "process_event", @as(c_int, @bitCast(@as(c_uint, channel))), id, upid);
@@ -4592,7 +4592,7 @@ fn process_blob(S: [*c]struct_a12_state) callconv(.c) void {
 pub fn process_video(S: [*c]struct_a12_state) callconv(.c) void {
     if (S.*.in_channel == -1) {
         var stream: u32 = undefined;
-        update_mac_and_decrypt(S, "process_video", &S.*.in_mac, chacha_cast(S.*.dec_state), @as([*c]u8, @ptrCast(@alignCast(&S.*.decode[0]))), @as(usize, @bitCast(@as(c_ulong, S.*.decode_pos))));
+        update_mac_and_decrypt(S, "process_video", &S.*.in_mac, chacha_cast(S.*.dec_state), @as([*c]u8, @ptrCast(@alignCast(&S.*.decode[0]))), @as(usize, @bitCast(@as(usize, S.*.decode_pos))));
         S.*.in_channel = @as(c_int, @bitCast(@as(c_uint, S.*.decode[0])));
         unpack_u32(&stream, &S.*.decode[1]);
         unpack_u16(&S.*.left, &S.*.decode[5]);
@@ -4607,7 +4607,7 @@ pub fn process_video(S: [*c]struct_a12_state) callconv(.c) void {
     }
     const ch: ?*struct_a12_channel = &S.*.channels[@as(c_uint, @intCast(S.*.in_channel))];
     const cvf: [*c]struct_video_frame = &ch.?.*.unpack_state.vframe;
-    if (!authdec_buffer("process_video", S, @as(usize, @bitCast(@as(c_ulong, S.*.decode_pos))))) {
+    if (!authdec_buffer("process_video", S, @as(usize, @bitCast(@as(usize, S.*.decode_pos))))) {
         fail_state(S, "video-bad-mac");
         return;
     } else {
@@ -4640,17 +4640,17 @@ pub fn process_video(S: [*c]struct_a12_state) callconv(.c) void {
         return;
     }
     if (a12int_buffer_format(@as(c_int, @bitCast(@as(c_uint, cvf.*.postprocess))))) {
-        var left: usize = @as(usize, @bitCast(@as(c_ulong, cvf.*.inbuf_sz -% cvf.*.inbuf_pos)));
+        var left: usize = @as(usize, @bitCast(@as(usize, cvf.*.inbuf_sz -% cvf.*.inbuf_pos)));
         while (true) {
             if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_VIDEO) != 0)) {
                 _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=decbuf:channel=%d:size=%u:left=%zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_VIDEO), "process_video", S.*.in_channel, @as(c_int, @bitCast(@as(c_uint, S.*.decode_pos))), left);
             }
             if (!false) break;
         }
-        if (left >= @as(usize, @bitCast(@as(c_ulong, S.*.decode_pos)))) {
-            _ = memcpy(@as(?*anyopaque, @ptrCast(&cvf.*.inbuf[cvf.*.inbuf_pos])), @as(?*const anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&S.*.decode[0]))))), @as(c_ulong, @bitCast(@as(c_ulong, S.*.decode_pos))));
+        if (left >= @as(usize, @bitCast(@as(usize, S.*.decode_pos)))) {
+            _ = memcpy(@as(?*anyopaque, @ptrCast(&cvf.*.inbuf[cvf.*.inbuf_pos])), @as(?*const anyopaque, @ptrCast(@as([*c]u8, @ptrCast(@alignCast(&S.*.decode[0]))))), @as(usize, @bitCast(@as(usize, S.*.decode_pos))));
             cvf.*.inbuf_pos +%= @as(u32, @bitCast(@as(c_uint, S.*.decode_pos)));
-            left -%= @as(usize, @bitCast(@as(c_ulong, S.*.decode_pos)));
+            left -%= @as(usize, @bitCast(@as(usize, S.*.decode_pos)));
         } else if (left != 0) {
             while (true) {
                 if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_SYSTEM) != 0)) {
@@ -4691,7 +4691,7 @@ pub fn drain_audio(ch: ?*struct_a12_channel) callconv(.c) void {
     const cont: [*c]struct_arcan_shmif_cont = ch.?.*.cont;
     if (ch.?.*.active == CHANNEL_RAW) {
         if (ch.?.*.raw.signal_audio != null) {
-            ch.?.*.raw.signal_audio.?(@as(usize, @bitCast(@as(c_ulong, cont.*.abufused))), ch.?.*.raw.tag);
+            ch.?.*.raw.signal_audio.?(@as(usize, @bitCast(@as(usize, cont.*.abufused))), ch.?.*.raw.tag);
         }
         cont.*.abufused = 0;
         return;
@@ -4705,7 +4705,7 @@ pub fn process_audio(S: [*c]struct_a12_state) callconv(.c) void {
         unpack_u32(&stream, &S.*.decode[1]);
         unpack_u16(&S.*.left, &S.*.decode[5]);
         S.*.decode_pos = 0;
-        update_mac_and_decrypt(S, "process_audio", &S.*.in_mac, chacha_cast(S.*.dec_state), @as([*c]u8, @ptrCast(@alignCast(&S.*.decode[0]))), @as(usize, @bitCast(@as(c_long, header_sizes[S.*.state]))));
+        update_mac_and_decrypt(S, "process_audio", &S.*.in_mac, chacha_cast(S.*.dec_state), @as([*c]u8, @ptrCast(@alignCast(&S.*.decode[0]))), @as(usize, @bitCast(@as(isize, header_sizes[S.*.state]))));
         while (true) {
             if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_AUDIO) != 0)) {
                 _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:audio[%d:%x], left: %u\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_AUDIO), "process_audio", S.*.in_channel, stream, @as(c_int, @bitCast(@as(c_uint, S.*.left))));
@@ -4717,7 +4717,7 @@ pub fn process_audio(S: [*c]struct_a12_state) callconv(.c) void {
     const channel: ?*struct_a12_channel = &S.*.channels[@as(c_uint, @intCast(S.*.in_channel))];
     const caf: [*c]struct_audio_frame = &channel.?.*.unpack_state.aframe;
     const cont: [*c]struct_arcan_shmif_cont = channel.?.*.cont;
-    if (!authdec_buffer("process_audio", S, @as(usize, @bitCast(@as(c_ulong, S.*.decode_pos))))) {
+    if (!authdec_buffer("process_audio", S, @as(usize, @bitCast(@as(usize, S.*.decode_pos))))) {
         fail_state(S, "audio-bad-mac");
         return;
     } else {
@@ -4752,7 +4752,7 @@ pub fn process_audio(S: [*c]struct_a12_state) callconv(.c) void {
             .meta = std.mem.zeroes(u32),
             .abuf_sz = 1024,
             .abuf_cnt = 16,
-            .samplerate = @as(isize, @bitCast(@as(c_ulong, caf.*.rate))),
+            .samplerate = @as(isize, @bitCast(@as(usize, caf.*.rate))),
             .vbuf_cnt = 1,
             .rows = std.mem.zeroes(usize),
             .cols = std.mem.zeroes(usize),
@@ -4769,7 +4769,7 @@ pub fn process_audio(S: [*c]struct_a12_state) callconv(.c) void {
             return;
         }
     }
-    var samples_in: usize = @as(usize, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, S.*.decode_pos))) >> @intCast(1))));
+    var samples_in: usize = @as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, S.*.decode_pos))) >> @intCast(1))));
     var pos: usize = 0;
     while (samples_in > 1) {
         var l: i16 = undefined;
@@ -4794,7 +4794,7 @@ pub fn process_audio(S: [*c]struct_a12_state) callconv(.c) void {
         if ((@as(c_int, @bitCast(@as(c_uint, cont.*.abufcount))) - @as(c_int, @bitCast(@as(c_uint, cont.*.abufpos)))) <= 1) {
             while (true) {
                 if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_AUDIO) != 0)) {
-                    _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:forward %zu samples\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_AUDIO), "process_audio", @as(usize, @bitCast(@as(c_ulong, cont.*.abufpos))));
+                    _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:forward %zu samples\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_AUDIO), "process_audio", @as(usize, @bitCast(@as(usize, cont.*.abufpos))));
                 }
                 if (!false) break;
             }
@@ -4807,7 +4807,7 @@ pub fn process_audio(S: [*c]struct_a12_state) callconv(.c) void {
     }
     while (true) {
         if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_TRANSFER) != 0)) {
-            _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:audio packet over, samples left: %zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_TRANSFER), "process_audio", @as(usize, @bitCast(@as(c_ulong, caf.*.nsamples))));
+            _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:audio packet over, samples left: %zu\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_TRANSFER), "process_audio", @as(usize, @bitCast(@as(usize, caf.*.nsamples))));
         }
         if (!false) break;
     }
@@ -4830,11 +4830,11 @@ pub fn read_data(S: [*c]struct_a12_state, fd: c_int, cap_arg: usize, nts: [*c]u1
     const nr: isize = read(fd, buf, cap);
     while (true) {
         if ((a12_trace_dst != null) and ((a12_trace_targets & A12_TRACE_BTRANSFER) != 0)) {
-            _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=input:read=%zd:descriptor=%d:error=%d\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_BTRANSFER), "read_data", nr, fd, if (nr == @as(isize, @bitCast(@as(c_long, -1)))) __errno_location().* else @as(c_int, 0));
+            _ = fprintf(a12_trace_dst, "tag=%s:ts=%lld:group=%s:function=%s:kind=input:read=%zd:descriptor=%d:error=%d\n", @as([*c]u8, @ptrCast(@alignCast(&S.*.tracetag[0]))), arcan_timemillis(), a12int_group_tostr(A12_TRACE_BTRANSFER), "read_data", nr, fd, if (nr == @as(isize, @bitCast(@as(isize, -1)))) __errno_location().* else @as(c_int, 0));
         }
         if (!false) break;
     }
-    if (@as(isize, @bitCast(@as(c_long, -1))) == nr) {
+    if (@as(isize, @bitCast(@as(isize, -1))) == nr) {
         if (((__errno_location().* == 11) or (__errno_location().* == 11)) or (__errno_location().* == 4)) {
             die.* = false;
         } else {
@@ -4916,11 +4916,11 @@ pub fn queue_node(S: [*c]struct_a12_state, node: [*c]struct_blob_xfer) callconv(
         }
         return 0;
     }
-    if (!(nts != 0)) return @as(usize, @bitCast(@as(c_ulong, nts)));
+    if (!(nts != 0)) return @as(usize, @bitCast(@as(usize, nts)));
     if (node.*.zstd != null) {
-        die = !flush_compressed(S, node, buf, @as(usize, @bitCast(@as(c_ulong, nts))));
+        die = !flush_compressed(S, node, buf, @as(usize, @bitCast(@as(usize, nts))));
     } else {
-        die = !flush_uncompressed(S, node, buf, @as(usize, @bitCast(@as(c_ulong, nts))));
+        die = !flush_uncompressed(S, node, buf, @as(usize, @bitCast(@as(usize, nts))));
     }
     if (free_buf) {
         free(@as(?*anyopaque, @ptrCast(buf)));
@@ -4928,7 +4928,7 @@ pub fn queue_node(S: [*c]struct_a12_state, node: [*c]struct_blob_xfer) callconv(
     if (die) {
         unlink_node(S, &S.*.pending_out, node);
     }
-    return @as(usize, @bitCast(@as(c_ulong, nts)));
+    return @as(usize, @bitCast(@as(usize, nts)));
 }
 pub fn flush_compressed(S: [*c]struct_a12_state, node: [*c]struct_blob_xfer, buf: [*c]u8, nts: usize) callconv(.c) bool {
     var outb: [7]u8 = undefined;

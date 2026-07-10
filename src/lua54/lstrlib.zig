@@ -16,7 +16,7 @@ pub const __builtin_isinf = c_builtins.__builtin_isinf;
 pub const __builtin_isinf_sign = c_builtins.__builtin_isinf_sign;
 
 // Type aliases (C standard types used by extern declarations)
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const sig_atomic_t = c_int;
 pub const wchar_t = c_uint;
 pub const char16_t = c_ushort;
@@ -244,17 +244,17 @@ pub extern fn heapsort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaqu
 pub extern fn mergesort(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.c) c_int) c_int;
 pub extern fn mergesort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque, ?*anyopaque) callconv(.c) c_int, ?*anyopaque) c_int;
 pub extern fn free(?*anyopaque) void;
-pub extern fn malloc(c_ulong) ?*anyopaque;
-pub extern fn calloc(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn memalign(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
+pub extern fn malloc(usize) ?*anyopaque;
+pub extern fn calloc(usize, usize) ?*anyopaque;
+pub extern fn memalign(usize, usize) ?*anyopaque;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
 pub extern fn realloc_in_place(?*anyopaque, usize) ?*anyopaque;
 pub extern fn reallocarray(?*anyopaque, usize, usize) ?*anyopaque;
 pub extern fn valloc(usize) ?*anyopaque;
 pub extern fn pvalloc(usize) ?*anyopaque;
 pub extern fn strdup([*c]const u8) [*c]u8;
-pub extern fn strndup([*c]const u8, c_ulong) [*c]u8;
-pub extern fn aligned_alloc(c_ulong, c_ulong) ?*anyopaque;
+pub extern fn strndup([*c]const u8, usize) [*c]u8;
+pub extern fn aligned_alloc(usize, usize) ?*anyopaque;
 pub extern fn posix_memalign([*c]?*anyopaque, usize, usize) c_int;
 pub extern fn mallopt(c_int, c_int) c_int;
 pub extern fn malloc_trim(usize) c_int;
@@ -337,35 +337,35 @@ pub extern fn fcvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn ecvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn gcvt(f64, c_int, [*c]u8) [*c]u8;
 pub extern fn at_quick_exit(?*const fn () callconv(.c) void) c_int;
-pub extern fn memset(?*anyopaque, c_int, c_ulong) ?*anyopaque;
-pub extern fn memmove(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memcpy(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
+pub extern fn memset(?*anyopaque, c_int, usize) ?*anyopaque;
+pub extern fn memmove(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
+pub extern fn memcpy(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
 pub extern fn hexpcpy([*c]u8, ?*const anyopaque, usize) [*c]u8;
-pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
+pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn strlen([*c]const u8) c_ulong;
 pub extern fn strnlen([*c]const u8, usize) usize;
 pub extern fn strnlen_s([*c]const u8, usize) usize;
 pub extern fn strchr([*c]const u8, c_int) [*c]u8;
-pub extern fn memchr(?*const anyopaque, c_int, c_ulong) ?*anyopaque;
+pub extern fn memchr(?*const anyopaque, c_int, usize) ?*anyopaque;
 pub extern fn rawmemchr(?*const anyopaque, c_int) ?*anyopaque;
 pub extern fn wcslen([*c]const c_uint) c_ulong;
 pub extern fn wcsnlen([*c]const wchar_t, usize) usize;
 pub extern fn wcsnlen_s([*c]const wchar_t, usize) usize;
 pub extern fn wcschr([*c]const c_uint, c_uint) [*c]c_uint;
-pub extern fn wmemchr([*c]const c_uint, c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemchr([*c]const c_uint, c_uint, usize) [*c]c_uint;
 pub extern fn wcschrnul([*c]const wchar_t, wchar_t) [*c]wchar_t;
 pub extern fn strstr([*c]const u8, [*c]const u8) [*c]u8;
 pub extern fn wcsstr([*c]const wchar_t, [*c]const wchar_t) [*c]wchar_t;
 pub extern fn strcmp([*c]const u8, [*c]const u8) c_int;
-pub extern fn strncmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcscmp([*c]const c_uint, [*c]const c_uint) c_int;
-pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
-pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
+pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
+pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
 pub extern fn strcasecmp([*c]const u8, [*c]const u8) c_int;
 pub extern fn wcscasecmp([*c]const wchar_t, [*c]const wchar_t) c_int;
-pub extern fn strncasecmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncasecmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcsncasecmp([*c]const wchar_t, [*c]const wchar_t, usize) c_int;
 pub extern fn strrchr([*c]const u8, c_int) [*c]u8;
 pub extern fn wcsrchr([*c]const wchar_t, wchar_t) [*c]wchar_t;
@@ -378,21 +378,21 @@ pub extern fn wcscspn([*c]const wchar_t, [*c]const wchar_t) usize;
 pub extern fn memfrob(?*anyopaque, usize) ?*anyopaque;
 pub extern fn strcoll([*c]const u8, [*c]const u8) c_int;
 pub extern fn stpcpy([*c]u8, [*c]const u8) [*c]u8;
-pub extern fn stpncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn stpncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strcat([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscat([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strxfrm([*c]u8, [*c]const u8, c_ulong) c_ulong;
+pub extern fn strxfrm([*c]u8, [*c]const u8, usize) usize;
 pub extern fn strcpy([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscpy([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn wcsncat([*c]wchar_t, [*c]const wchar_t, usize) [*c]wchar_t;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strtok([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn strtok_r([*c]u8, [*c]const u8, [*c][*c]u8) [*c]u8;
 pub extern fn wcstok([*c]wchar_t, [*c]const wchar_t, [*c][*c]wchar_t) [*c]wchar_t;
 pub extern fn wmemset([*c]wchar_t, wchar_t, usize) [*c]wchar_t;
-pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
-pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
+pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
 pub extern fn strfmon([*c]u8, usize, [*c]const u8, ...) isize;
 pub extern fn a64l([*c]const u8) c_long;
 pub extern fn l64a(c_long) [*c]u8;
@@ -422,9 +422,9 @@ pub extern fn strsignal(c_int) [*c]u8;
 pub extern fn strerror(c_int) [*c]u8;
 pub extern fn strerror_r(c_int, [*c]u8, usize) errno_t;
 pub extern fn __xpg_strerror_r(c_int, [*c]u8, usize) [*c]u8;
-pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
-pub extern fn bcopy(?*const anyopaque, ?*anyopaque, c_ulong) void;
-pub extern fn bzero(?*anyopaque, c_ulong) void;
+pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
+pub extern fn bcopy(?*const anyopaque, ?*anyopaque, usize) void;
+pub extern fn bzero(?*anyopaque, usize) void;
 pub extern fn index([*c]const u8, c_int) [*c]u8;
 pub extern fn rindex([*c]const u8, c_int) [*c]u8;
 pub extern fn mktemp([*c]u8) [*c]u8;
@@ -822,8 +822,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -855,8 +855,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -1205,8 +1205,8 @@ pub export fn luaopen_string(arg_L: ?*lua_State) callconv(.c) c_int {
     _ = &L;
     _ = blk: {
         _ = blk_1: {
-            luaL_checkversion_(L, @as(lua_Number, @floatFromInt(@as(c_int, 504))), (@sizeOf(lua_Integer) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 16))))) +% @sizeOf(lua_Number));
-            break :blk_1 lua_createtable(L, @as(c_int, 0), @as(c_int, @bitCast(@as(c_uint, @truncate((@sizeOf([18]luaL_Reg) / @sizeOf(luaL_Reg)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))))));
+            luaL_checkversion_(L, @as(lua_Number, @floatFromInt(@as(c_int, 504))), (@sizeOf(lua_Integer) *% @as(usize, @bitCast(@as(isize, @as(c_int, 16))))) +% @sizeOf(lua_Number));
+            break :blk_1 lua_createtable(L, @as(c_int, 0), @as(c_int, @bitCast(@as(c_uint, @truncate((@sizeOf([18]luaL_Reg) / @sizeOf(luaL_Reg)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))))));
         };
         break :blk luaL_setfuncs(L, @as([*c]const luaL_Reg, @ptrCast(@alignCast(&strlib[@as(usize, @intCast(0))]))), @as(c_int, 0));
     };
@@ -1343,7 +1343,7 @@ pub fn posrelatI(arg_pos: lua_Integer, arg_len: usize) callconv(.c) usize {
     _ = &pos;
     var len = arg_len;
     _ = &len;
-    if (pos > @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 0))))) return @as(usize, @bitCast(@as(c_long, @truncate(pos)))) else if (pos == @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 0))))) return 1 else if (pos < -@as(lua_Integer, @bitCast(@as(c_ulonglong, len)))) return 1 else return (len +% @as(usize, @bitCast(@as(c_long, @truncate(pos))))) +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))));
+    if (pos > @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 0))))) return @as(usize, @bitCast(@as(isize, @truncate(pos)))) else if (pos == @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 0))))) return 1 else if (pos < -@as(lua_Integer, @bitCast(@as(c_ulonglong, len)))) return 1 else return (len +% @as(usize, @bitCast(@as(isize, @truncate(pos))))) +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
     return std.mem.zeroes(usize);
 }
 pub fn getendpos(arg_L: ?*lua_State, arg_arg: c_int, arg_def: lua_Integer, arg_len: usize) callconv(.c) usize {
@@ -1357,7 +1357,7 @@ pub fn getendpos(arg_L: ?*lua_State, arg_arg: c_int, arg_def: lua_Integer, arg_l
     _ = &len;
     var pos: lua_Integer = luaL_optinteger(L, arg, def);
     _ = &pos;
-    if (pos > @as(lua_Integer, @bitCast(@as(c_ulonglong, len)))) return len else if (pos >= @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 0))))) return @as(usize, @bitCast(@as(c_long, @truncate(pos)))) else if (pos < -@as(lua_Integer, @bitCast(@as(c_ulonglong, len)))) return 0 else return (len +% @as(usize, @bitCast(@as(c_long, @truncate(pos))))) +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))));
+    if (pos > @as(lua_Integer, @bitCast(@as(c_ulonglong, len)))) return len else if (pos >= @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 0))))) return @as(usize, @bitCast(@as(isize, @truncate(pos)))) else if (pos < -@as(lua_Integer, @bitCast(@as(c_ulonglong, len)))) return 0 else return (len +% @as(usize, @bitCast(@as(isize, @truncate(pos))))) +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
     return std.mem.zeroes(usize);
 }
 pub fn str_sub(arg_L: ?*lua_State) callconv(.c) c_int {
@@ -1372,7 +1372,7 @@ pub fn str_sub(arg_L: ?*lua_State) callconv(.c) c_int {
     var end: usize = getendpos(L, @as(c_int, 3), @as(lua_Integer, @bitCast(@as(c_longlong, -@as(c_int, 1)))), l);
     _ = &end;
     if (start <= end) {
-        _ = lua_pushlstring(L, (s + start) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))), (end -% start) +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1)))));
+        _ = lua_pushlstring(L, (s + start) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))), (end -% start) +% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))));
     } else {
         _ = lua_pushstring(L, "");
     }
@@ -1394,7 +1394,7 @@ pub fn str_reverse(arg_L: ?*lua_State) callconv(.c) c_int {
     {
         i = 0;
         while (i < l) : (i +%= 1) {
-            p[i] = s[(l -% i) -% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))];
+            p[i] = s[(l -% i) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))];
         }
     }
     luaL_pushresultsize(&b, l);
@@ -1459,8 +1459,8 @@ pub fn str_rep(arg_L: ?*lua_State) callconv(.c) c_int {
     _ = &sep;
     if (n <= @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 0))))) {
         _ = lua_pushstring(L, "");
-    } else if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(((l +% lsep) < l) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, l +% lsep))) > (@as(c_ulonglong, @bitCast(@as(c_ulonglong, if (@sizeOf(usize) < @sizeOf(c_int)) ~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) else @as(usize, @bitCast(@as(c_long, @as(c_int, 2147483647))))))) / @as(c_ulonglong, @bitCast(n))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) return luaL_error(L, "resulting string too large") else {
-        var totallen: usize = (@as(usize, @bitCast(@as(c_long, @truncate(n)))) *% l) +% (@as(usize, @bitCast(@as(c_long, @truncate(n - @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) *% lsep);
+    } else if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(((l +% lsep) < l) or (@as(c_ulonglong, @bitCast(@as(c_ulonglong, l +% lsep))) > (@as(c_ulonglong, @bitCast(@as(c_ulonglong, if (@sizeOf(usize) < @sizeOf(c_int)) ~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) else @as(usize, @bitCast(@as(isize, @as(c_int, 2147483647))))))) / @as(c_ulonglong, @bitCast(n))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) return luaL_error(L, "resulting string too large") else {
+        var totallen: usize = (@as(usize, @bitCast(@as(isize, @truncate(n)))) *% l) +% (@as(usize, @bitCast(@as(isize, @truncate(n - @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1)))))))) *% lsep);
         _ = &totallen;
         var b: luaL_Buffer = undefined;
         _ = &b;
@@ -1474,7 +1474,7 @@ pub fn str_rep(arg_L: ?*lua_State) callconv(.c) c_int {
         }) > @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1))))) {
             _ = memcpy(@as(?*anyopaque, @ptrCast(p)), @as(?*const anyopaque, @ptrCast(s)), l *% @sizeOf(u8));
             p += l;
-            if (lsep > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) {
+            if (lsep > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) {
                 _ = memcpy(@as(?*anyopaque, @ptrCast(p)), @as(?*const anyopaque, @ptrCast(sep)), lsep *% @sizeOf(u8));
                 p += lsep;
             }
@@ -1502,13 +1502,13 @@ pub fn str_byte(arg_L: ?*lua_State) callconv(.c) c_int {
     var i: c_int = undefined;
     _ = &i;
     if (posi > pose) return 0;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((pose -% posi) >= @as(usize, @bitCast(@as(c_long, @as(c_int, 2147483647))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) return luaL_error(L, "string slice too long");
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((pose -% posi) >= @as(usize, @bitCast(@as(isize, @as(c_int, 2147483647))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) return luaL_error(L, "string slice too long");
     n = @as(c_int, @bitCast(@as(c_uint, @truncate(pose -% posi)))) + @as(c_int, 1);
     luaL_checkstack(L, n, "string slice too long");
     {
         i = 0;
         while (i < n) : (i += 1) {
-            lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_ulonglong, @as(u8, @bitCast(s[(posi +% @as(usize, @bitCast(@as(c_long, i)))) -% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))]))))));
+            lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_ulonglong, @as(u8, @bitCast(s[(posi +% @as(usize, @bitCast(@as(isize, i)))) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))]))))));
         }
     }
     return n;
@@ -1522,21 +1522,21 @@ pub fn str_char(arg_L: ?*lua_State) callconv(.c) c_int {
     _ = &i;
     var b: luaL_Buffer = undefined;
     _ = &b;
-    var p: [*c]u8 = luaL_buffinitsize(L, &b, @as(usize, @bitCast(@as(c_long, n))));
+    var p: [*c]u8 = luaL_buffinitsize(L, &b, @as(usize, @bitCast(@as(isize, n))));
     _ = &p;
     {
         i = 1;
         while (i <= n) : (i += 1) {
             var c: lua_Unsigned = @as(lua_Unsigned, @bitCast(luaL_checkinteger(L, i)));
             _ = &c;
-            _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(c <= @as(lua_Unsigned, @bitCast(@as(c_longlong, @as(c_int, 255))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, i, "value out of range") != 0);
+            _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(c <= @as(lua_Unsigned, @bitCast(@as(c_longlong, @as(c_int, 255))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, i, "value out of range") != 0);
             (blk: {
                 const tmp = i - @as(c_int, 1);
                 if (tmp >= 0) break :blk p + @as(usize, @intCast(tmp)) else break :blk p - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
             }).* = @as(u8, @bitCast(@as(u8, @bitCast(@as(u8, @truncate(c))))));
         }
     }
-    luaL_pushresultsize(&b, @as(usize, @bitCast(@as(c_long, n))));
+    luaL_pushresultsize(&b, @as(usize, @bitCast(@as(isize, n))));
     return 1;
 }
 pub const struct_str_Writer = extern struct {
@@ -1571,7 +1571,7 @@ pub fn str_dump(arg_L: ?*lua_State) callconv(.c) c_int {
     luaL_checktype(L, @as(c_int, 1), @as(c_int, 6));
     lua_settop(L, @as(c_int, 1));
     state.init = 0;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(lua_dump(L, &writer, @as(?*anyopaque, @ptrCast(&state)), strip) != @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) return luaL_error(L, "unable to dump given function");
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(lua_dump(L, &writer, @as(?*anyopaque, @ptrCast(&state)), strip) != @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) return luaL_error(L, "unable to dump given function");
     luaL_pushresult(&state.B);
     return 1;
 }
@@ -1588,7 +1588,7 @@ pub fn tonum(arg_L: ?*lua_State, arg_arg: c_int) callconv(.c) c_int {
         _ = &len;
         var s: [*c]const u8 = lua_tolstring(L, arg, &len);
         _ = &s;
-        return @intFromBool((s != @as([*c]const u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) and (lua_stringtonumber(L, s) == (len +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1)))))));
+        return @intFromBool((s != @as([*c]const u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) and (lua_stringtonumber(L, s) == (len +% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))));
     }
     return 0;
 }
@@ -1598,11 +1598,11 @@ pub fn trymt(arg_L: ?*lua_State, arg_mtname: [*c]const u8) callconv(.c) void {
     var mtname = arg_mtname;
     _ = &mtname;
     lua_settop(L, @as(c_int, 2));
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((lua_type(L, @as(c_int, 2)) == @as(c_int, 4)) or !(luaL_getmetafield(L, @as(c_int, 2), mtname) != 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((lua_type(L, @as(c_int, 2)) == @as(c_int, 4)) or !(luaL_getmetafield(L, @as(c_int, 2), mtname) != 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         _ = luaL_error(L, "attempt to %s a '%s' with a '%s'", mtname + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 2))))), lua_typename(L, lua_type(L, -@as(c_int, 2))), lua_typename(L, lua_type(L, -@as(c_int, 1))));
     }
     lua_rotate(L, -@as(c_int, 3), @as(c_int, 1));
-    lua_callk(L, @as(c_int, 2), @as(c_int, 1), @as(lua_KContext, @bitCast(@as(c_long, @as(c_int, 0)))), null);
+    lua_callk(L, @as(c_int, 2), @as(c_int, 1), @as(lua_KContext, @bitCast(@as(isize, @as(c_int, 0)))), null);
 }
 pub fn arith(arg_L: ?*lua_State, arg_op: c_int, arg_mtname: [*c]const u8) callconv(.c) c_int {
     var L = arg_L;
@@ -1635,7 +1635,7 @@ pub fn arith_mul(arg_L: ?*lua_State) callconv(.c) c_int {
         lua_pushcclosure(L, &str_rep, @as(c_int, 0));
         lua_pushvalue(L, @as(c_int, 1));
         lua_pushvalue(L, @as(c_int, 2));
-        lua_callk(L, @as(c_int, 2), @as(c_int, 1), @as(lua_KContext, @bitCast(@as(c_long, @as(c_int, 0)))), null);
+        lua_callk(L, @as(c_int, 2), @as(c_int, 1), @as(lua_KContext, @bitCast(@as(isize, @as(c_int, 0)))), null);
         return 1;
     } else {
         return arith(L, @as(c_int, 2), "__mul");
@@ -1661,7 +1661,7 @@ pub fn arith_mod(arg_L: ?*lua_State) callconv(.c) c_int {
                 _ = lua_geti(L, @as(c_int, 2), @as(lua_Integer, @bitCast(@as(c_longlong, i))));
             }
         }
-        lua_callk(L, @as(c_int, 1) + n, @as(c_int, 1), @as(lua_KContext, @bitCast(@as(c_long, @as(c_int, 0)))), null);
+        lua_callk(L, @as(c_int, 1) + n, @as(c_int, 1), @as(lua_KContext, @bitCast(@as(isize, @as(c_int, 0)))), null);
         return 1;
     } else {
         return arith(L, @as(c_int, 3), "__mod");
@@ -1954,7 +1954,7 @@ pub fn check_capture(arg_ms: [*c]MatchState, arg_l: c_int) callconv(.c) c_int {
     var l = arg_l;
     _ = &l;
     l -= @as(c_int, '1');
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(((l < @as(c_int, 0)) or (l >= @as(c_int, @bitCast(@as(c_uint, ms.*.level))))) or (ms.*.capture[@as(c_uint, @intCast(l))].len == @as(ptrdiff_t, @bitCast(@as(c_long, -@as(c_int, 1)))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) return luaL_error(ms.*.L, "invalid capture index %%%d", l + @as(c_int, 1));
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(((l < @as(c_int, 0)) or (l >= @as(c_int, @bitCast(@as(c_uint, ms.*.level))))) or (ms.*.capture[@as(c_uint, @intCast(l))].len == @as(ptrdiff_t, @bitCast(@as(isize, -@as(c_int, 1)))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) return luaL_error(ms.*.L, "invalid capture index %%%d", l + @as(c_int, 1));
     return l;
 }
 pub fn capture_to_close(arg_ms: [*c]MatchState) callconv(.c) c_int {
@@ -1964,7 +1964,7 @@ pub fn capture_to_close(arg_ms: [*c]MatchState) callconv(.c) c_int {
     _ = &level;
     {
         level -= 1;
-        while (level >= @as(c_int, 0)) : (level -= 1) if (ms.*.capture[@as(c_uint, @intCast(level))].len == @as(ptrdiff_t, @bitCast(@as(c_long, -@as(c_int, 1))))) return level;
+        while (level >= @as(c_int, 0)) : (level -= 1) if (ms.*.capture[@as(c_uint, @intCast(level))].len == @as(ptrdiff_t, @bitCast(@as(isize, -@as(c_int, 1))))) return level;
     }
     return luaL_error(ms.*.L, "invalid pattern capture");
 }
@@ -1982,7 +1982,7 @@ pub fn classend(arg_ms: [*c]MatchState, arg_p: [*c]const u8) callconv(.c) [*c]co
         }).*)))) {
             @as(c_int, 37) => {
                 {
-                    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(p == ms.*.p_end) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+                    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(p == ms.*.p_end) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
                         _ = luaL_error(ms.*.L, "malformed pattern (ends with '%%')");
                     }
                     return p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))));
@@ -1994,7 +1994,7 @@ pub fn classend(arg_ms: [*c]MatchState, arg_p: [*c]const u8) callconv(.c) [*c]co
                         p += 1;
                     }
                     while (true) {
-                        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(p == ms.*.p_end) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+                        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(p == ms.*.p_end) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
                             _ = luaL_error(ms.*.L, "malformed pattern (missing ']')");
                         }
                         if ((@as(c_int, @bitCast(@as(c_uint, (blk: {
@@ -2138,7 +2138,7 @@ pub fn matchbalance(arg_ms: [*c]MatchState, arg_s: [*c]const u8, arg_p: [*c]cons
     _ = &s;
     var p = arg_p;
     _ = &p;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(p >= (ms.*.p_end - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(p >= (ms.*.p_end - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         _ = luaL_error(ms.*.L, "malformed pattern (missing arguments to '%%b')");
     }
     if (@as(c_int, @bitCast(@as(c_uint, s.*))) != @as(c_int, @bitCast(@as(c_uint, p.*)))) return null else {
@@ -2180,7 +2180,7 @@ pub fn max_expand(arg_ms: [*c]MatchState, arg_s: [*c]const u8, arg_p: [*c]const 
     while (singlematch(ms, s + @as(usize, @bitCast(@as(isize, @intCast(i)))), p, ep) != 0) {
         i += 1;
     }
-    while (i >= @as(ptrdiff_t, @bitCast(@as(c_long, @as(c_int, 0))))) {
+    while (i >= @as(ptrdiff_t, @bitCast(@as(isize, @as(c_int, 0))))) {
         var res: [*c]const u8 = match(ms, s + @as(usize, @bitCast(@as(isize, @intCast(i)))), ep + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))));
         _ = &res;
         if (res != null) return res;
@@ -2223,7 +2223,7 @@ pub fn start_capture(arg_ms: [*c]MatchState, arg_s: [*c]const u8, arg_p: [*c]con
         _ = luaL_error(ms.*.L, "too many captures");
     }
     ms.*.capture[@as(c_uint, @intCast(level))].init = s;
-    ms.*.capture[@as(c_uint, @intCast(level))].len = @as(ptrdiff_t, @bitCast(@as(c_long, what)));
+    ms.*.capture[@as(c_uint, @intCast(level))].len = @as(ptrdiff_t, @bitCast(@as(isize, what)));
     ms.*.level = @as(u8, @bitCast(@as(i8, @truncate(level + @as(c_int, 1)))));
     if ((blk: {
         const tmp = match(ms, s, p);
@@ -2245,13 +2245,13 @@ pub fn end_capture(arg_ms: [*c]MatchState, arg_s: [*c]const u8, arg_p: [*c]const
     _ = &l;
     var res: [*c]const u8 = undefined;
     _ = &res;
-    ms.*.capture[@as(c_uint, @intCast(l))].len = @divExact(@as(c_long, @bitCast(@intFromPtr(s) -% @intFromPtr(ms.*.capture[@as(c_uint, @intCast(l))].init))), @sizeOf(u8));
+    ms.*.capture[@as(c_uint, @intCast(l))].len = @divExact(@as(isize, @bitCast(@intFromPtr(s) -% @intFromPtr(ms.*.capture[@as(c_uint, @intCast(l))].init))), @sizeOf(u8));
     if ((blk: {
         const tmp = match(ms, s, p);
         res = tmp;
         break :blk tmp;
     }) == @as([*c]const u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) {
-        ms.*.capture[@as(c_uint, @intCast(l))].len = @as(ptrdiff_t, @bitCast(@as(c_long, -@as(c_int, 1))));
+        ms.*.capture[@as(c_uint, @intCast(l))].len = @as(ptrdiff_t, @bitCast(@as(isize, -@as(c_int, 1))));
     }
     return res;
 }
@@ -2266,7 +2266,7 @@ pub fn match_capture(arg_ms: [*c]MatchState, arg_s: [*c]const u8, arg_l: c_int) 
     _ = &len;
     l = check_capture(ms, l);
     len = @as(usize, @bitCast(ms.*.capture[@as(c_uint, @intCast(l))].len));
-    if ((@as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(ms.*.src_end) -% @intFromPtr(s))), @sizeOf(u8)))) >= len) and (memcmp(@as(?*const anyopaque, @ptrCast(ms.*.capture[@as(c_uint, @intCast(l))].init)), @as(?*const anyopaque, @ptrCast(s)), len) == @as(c_int, 0))) return s + len else return null;
+    if ((@as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(ms.*.src_end) -% @intFromPtr(s))), @sizeOf(u8)))) >= len) and (memcmp(@as(?*const anyopaque, @ptrCast(ms.*.capture[@as(c_uint, @intCast(l))].init)), @as(?*const anyopaque, @ptrCast(s)), len) == @as(c_int, 0))) return s + len else return null;
     return null;
 }
 pub fn lmemfind(arg_s1: [*c]const u8, arg_l1: usize, arg_s2: [*c]const u8, arg_l2: usize) callconv(.c) [*c]const u8 {
@@ -2278,19 +2278,19 @@ pub fn lmemfind(arg_s1: [*c]const u8, arg_l1: usize, arg_s2: [*c]const u8, arg_l
     _ = &s2;
     var l2 = arg_l2;
     _ = &l2;
-    if (l2 == @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) return s1 else if (l2 > l1) return null else {
+    if (l2 == @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) return s1 else if (l2 > l1) return null else {
         var init: [*c]const u8 = undefined;
         _ = &init;
         l2 -%= 1;
         l1 = l1 -% l2;
-        while ((l1 > @as(usize, @bitCast(@as(c_long, @as(c_int, 0))))) and ((blk: {
+        while ((l1 > @as(usize, @bitCast(@as(isize, @as(c_int, 0))))) and ((blk: {
             const tmp = @as([*c]const u8, @ptrCast(@alignCast(memchr(@as(?*const anyopaque, @ptrCast(s1)), @as(c_int, @bitCast(@as(c_uint, s2.*))), l1))));
             init = tmp;
             break :blk tmp;
         }) != @as([*c]const u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0)))))))) {
             init += 1;
             if (memcmp(@as(?*const anyopaque, @ptrCast(init)), @as(?*const anyopaque, @ptrCast(s2 + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))))), l2) == @as(c_int, 0)) return init - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))) else {
-                l1 -%= @as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(init) -% @intFromPtr(s1))), @sizeOf(u8))));
+                l1 -%= @as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(init) -% @intFromPtr(s1))), @sizeOf(u8))));
                 s1 = init;
             }
         }
@@ -2310,19 +2310,19 @@ pub fn get_onecapture(arg_ms: [*c]MatchState, arg_i: c_int, arg_s: [*c]const u8,
     var cap = arg_cap;
     _ = &cap;
     if (i >= @as(c_int, @bitCast(@as(c_uint, ms.*.level)))) {
-        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(i != @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(i != @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
             _ = luaL_error(ms.*.L, "invalid capture index %%%d", i + @as(c_int, 1));
         }
         cap.* = s;
-        return @as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(e) -% @intFromPtr(s))), @sizeOf(u8))));
+        return @as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(e) -% @intFromPtr(s))), @sizeOf(u8))));
     } else {
         var capl: ptrdiff_t = ms.*.capture[@as(c_uint, @intCast(i))].len;
         _ = &capl;
         cap.* = ms.*.capture[@as(c_uint, @intCast(i))].init;
-        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(capl == @as(ptrdiff_t, @bitCast(@as(c_long, -@as(c_int, 1))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(capl == @as(ptrdiff_t, @bitCast(@as(isize, -@as(c_int, 1))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
             _ = luaL_error(ms.*.L, "unfinished capture");
-        } else if (capl == @as(ptrdiff_t, @bitCast(@as(c_long, -@as(c_int, 2))))) {
-            lua_pushinteger(ms.*.L, @as(lua_Integer, @bitCast(@as(c_longlong, @divExact(@as(c_long, @bitCast(@intFromPtr(ms.*.capture[@as(c_uint, @intCast(i))].init) -% @intFromPtr(ms.*.src_init))), @sizeOf(u8)) + @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))))));
+        } else if (capl == @as(ptrdiff_t, @bitCast(@as(isize, -@as(c_int, 2))))) {
+            lua_pushinteger(ms.*.L, @as(lua_Integer, @bitCast(@as(c_longlong, @divExact(@as(isize, @bitCast(@intFromPtr(ms.*.capture[@as(c_uint, @intCast(i))].init) -% @intFromPtr(ms.*.src_init))), @sizeOf(u8)) + @as(c_long, @as(c_int, 1))))));
         }
         return @as(usize, @bitCast(capl));
     }
@@ -2341,7 +2341,7 @@ pub fn push_onecapture(arg_ms: [*c]MatchState, arg_i: c_int, arg_s: [*c]const u8
     _ = &cap;
     var l: ptrdiff_t = @as(ptrdiff_t, @bitCast(get_onecapture(ms, i, s, e, &cap)));
     _ = &l;
-    if (l != @as(ptrdiff_t, @bitCast(@as(c_long, -@as(c_int, 2))))) {
+    if (l != @as(ptrdiff_t, @bitCast(@as(isize, -@as(c_int, 2))))) {
         _ = lua_pushlstring(ms.*.L, cap, @as(usize, @bitCast(l)));
     }
 }
@@ -2374,7 +2374,7 @@ pub fn nospecials(arg_p: [*c]const u8, arg_l: usize) callconv(.c) c_int {
     _ = &upto;
     while (true) {
         if (strpbrk(p + upto, "^$*+?.([%-") != null) return 0;
-        upto +%= @as(usize, @bitCast(strlen(p + upto) +% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))));
+        upto +%= @as(usize, @bitCast(strlen(p + upto) +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))));
         if (!(upto <= l)) break;
     }
     return 1;
@@ -2417,7 +2417,7 @@ pub fn str_find_aux(arg_L: ?*lua_State, arg_find: c_int) callconv(.c) c_int {
     _ = &s;
     var p: [*c]const u8 = luaL_checklstring(L, @as(c_int, 2), &lp);
     _ = &p;
-    var init: usize = posrelatI(luaL_optinteger(L, @as(c_int, 3), @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1))))), ls) -% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))));
+    var init: usize = posrelatI(luaL_optinteger(L, @as(c_int, 3), @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1))))), ls) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
     _ = &init;
     if (init > ls) {
         lua_pushnil(L);
@@ -2427,8 +2427,8 @@ pub fn str_find_aux(arg_L: ?*lua_State, arg_find: c_int) callconv(.c) c_int {
         var s2: [*c]const u8 = lmemfind(s + init, ls -% init, p, lp);
         _ = &s2;
         if (s2 != null) {
-            lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_longlong, @divExact(@as(c_long, @bitCast(@intFromPtr(s2) -% @intFromPtr(s))), @sizeOf(u8)) + @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))))));
-            lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_ulonglong, @as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(s2) -% @intFromPtr(s))), @sizeOf(u8)))) +% lp))));
+            lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_longlong, @divExact(@as(isize, @bitCast(@intFromPtr(s2) -% @intFromPtr(s))), @sizeOf(u8)) + @as(c_long, @as(c_int, 1))))));
+            lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_ulonglong, @as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(s2) -% @intFromPtr(s))), @sizeOf(u8)))) +% lp))));
             return 2;
         }
     } else {
@@ -2453,8 +2453,8 @@ pub fn str_find_aux(arg_L: ?*lua_State, arg_find: c_int) callconv(.c) c_int {
                 break :blk tmp;
             }) != @as([*c]const u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) {
                 if (find != 0) {
-                    lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_longlong, @divExact(@as(c_long, @bitCast(@intFromPtr(s1) -% @intFromPtr(s))), @sizeOf(u8)) + @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))))));
-                    lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_longlong, @divExact(@as(c_long, @bitCast(@intFromPtr(res) -% @intFromPtr(s))), @sizeOf(u8))))));
+                    lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_longlong, @divExact(@as(isize, @bitCast(@intFromPtr(s1) -% @intFromPtr(s))), @sizeOf(u8)) + @as(c_long, @as(c_int, 1))))));
+                    lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_longlong, @divExact(@as(isize, @bitCast(@intFromPtr(res) -% @intFromPtr(s))), @sizeOf(u8))))));
                     return push_captures(&ms, null, null) + @as(c_int, 2);
                 } else return push_captures(&ms, s1, res);
             }
@@ -2527,14 +2527,14 @@ pub fn gmatch(arg_L: ?*lua_State) callconv(.c) c_int {
     _ = &s;
     var p: [*c]const u8 = luaL_checklstring(L, @as(c_int, 2), &lp);
     _ = &p;
-    var init: usize = posrelatI(luaL_optinteger(L, @as(c_int, 3), @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1))))), ls) -% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))));
+    var init: usize = posrelatI(luaL_optinteger(L, @as(c_int, 3), @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1))))), ls) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
     _ = &init;
     var gm: [*c]GMatchState = undefined;
     _ = &gm;
     lua_settop(L, @as(c_int, 2));
     gm = @as([*c]GMatchState, @ptrCast(@alignCast(lua_newuserdatauv(L, @sizeOf(GMatchState), @as(c_int, 0)))));
     if (init > ls) {
-        init = ls +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))));
+        init = ls +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
     }
     prepstate(&gm.*.ms, L, s, ls, p, lp);
     gm.*.src = s + init;
@@ -2565,11 +2565,11 @@ pub fn add_s(arg_ms: [*c]MatchState, arg_b: [*c]luaL_Buffer, arg_s: [*c]const u8
         p = tmp;
         break :blk tmp;
     }) != @as([*c]const u8, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) {
-        luaL_addlstring(b, news, @as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(p) -% @intFromPtr(news))), @sizeOf(u8)))));
+        luaL_addlstring(b, news, @as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(p) -% @intFromPtr(news))), @sizeOf(u8)))));
         p += 1;
         if (@as(c_int, @bitCast(@as(c_uint, p.*))) == @as(c_int, '%')) {
             _ = blk: {
-                _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+                _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
                 break :blk blk_1: {
                     const tmp = p.*;
                     b.*.b[blk_2: {
@@ -2582,13 +2582,13 @@ pub fn add_s(arg_ms: [*c]MatchState, arg_b: [*c]luaL_Buffer, arg_s: [*c]const u8
                 };
             };
         } else if (@as(c_int, @bitCast(@as(c_uint, p.*))) == @as(c_int, '0')) {
-            luaL_addlstring(b, s, @as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(e) -% @intFromPtr(s))), @sizeOf(u8)))));
+            luaL_addlstring(b, s, @as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(e) -% @intFromPtr(s))), @sizeOf(u8)))));
         } else if (isdigit(@as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast(p.*)))))) != 0) {
             var cap: [*c]const u8 = undefined;
             _ = &cap;
             var resl: ptrdiff_t = @as(ptrdiff_t, @bitCast(get_onecapture(ms, @as(c_int, @bitCast(@as(c_uint, p.*))) - @as(c_int, '1'), s, e, &cap)));
             _ = &resl;
-            if (resl == @as(ptrdiff_t, @bitCast(@as(c_long, -@as(c_int, 2))))) {
+            if (resl == @as(ptrdiff_t, @bitCast(@as(isize, -@as(c_int, 2))))) {
                 luaL_addvalue(b);
             } else {
                 luaL_addlstring(b, cap, @as(usize, @bitCast(resl)));
@@ -2596,7 +2596,7 @@ pub fn add_s(arg_ms: [*c]MatchState, arg_b: [*c]luaL_Buffer, arg_s: [*c]const u8
         } else {
             _ = luaL_error(L, "invalid use of '%c' in replacement string", @as(c_int, '%'));
         }
-        l -%= @as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))) -% @intFromPtr(news))), @sizeOf(u8))));
+        l -%= @as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))))) -% @intFromPtr(news))), @sizeOf(u8))));
         news = p + @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1)))));
     }
     luaL_addlstring(b, news, l);
@@ -2622,7 +2622,7 @@ pub fn add_value(arg_ms: [*c]MatchState, arg_b: [*c]luaL_Buffer, arg_s: [*c]cons
                     _ = &n;
                     lua_pushvalue(L, @as(c_int, 3));
                     n = push_captures(ms, s, e);
-                    lua_callk(L, n, @as(c_int, 1), @as(lua_KContext, @bitCast(@as(c_long, @as(c_int, 0)))), null);
+                    lua_callk(L, n, @as(c_int, 1), @as(lua_KContext, @bitCast(@as(isize, @as(c_int, 0)))), null);
                     break;
                 }
             },
@@ -2644,9 +2644,9 @@ pub fn add_value(arg_ms: [*c]MatchState, arg_b: [*c]luaL_Buffer, arg_s: [*c]cons
     }
     if (!(lua_toboolean(L, -@as(c_int, 1)) != 0)) {
         lua_settop(L, -@as(c_int, 1) - @as(c_int, 1));
-        luaL_addlstring(b, s, @as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(e) -% @intFromPtr(s))), @sizeOf(u8)))));
+        luaL_addlstring(b, s, @as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(e) -% @intFromPtr(s))), @sizeOf(u8)))));
         return 0;
-    } else if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(lua_isstring(L, -@as(c_int, 1)) != 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) return luaL_error(L, "invalid replacement value (a %s)", lua_typename(L, lua_type(L, -@as(c_int, 1)))) else {
+    } else if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(!(lua_isstring(L, -@as(c_int, 1)) != 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) return luaL_error(L, "invalid replacement value (a %s)", lua_typename(L, lua_type(L, -@as(c_int, 1)))) else {
         luaL_addvalue(b);
         return 1;
     }
@@ -2667,7 +2667,7 @@ pub fn str_gsub(arg_L: ?*lua_State) callconv(.c) c_int {
     _ = &lastmatch;
     var tr: c_int = lua_type(L, @as(c_int, 3));
     _ = &tr;
-    var max_s: lua_Integer = luaL_optinteger(L, @as(c_int, 4), @as(lua_Integer, @bitCast(@as(c_ulonglong, srcl +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))))));
+    var max_s: lua_Integer = luaL_optinteger(L, @as(c_int, 4), @as(lua_Integer, @bitCast(@as(c_ulonglong, srcl +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))))));
     _ = &max_s;
     var anchor: c_int = @intFromBool(@as(c_int, @bitCast(@as(c_uint, p.*))) == @as(c_int, '^'));
     _ = &anchor;
@@ -2679,7 +2679,7 @@ pub fn str_gsub(arg_L: ?*lua_State) callconv(.c) c_int {
     _ = &ms;
     var b: luaL_Buffer = undefined;
     _ = &b;
-    _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((((tr == @as(c_int, 3)) or (tr == @as(c_int, 4))) or (tr == @as(c_int, 6))) or (tr == @as(c_int, 5))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_typeerror(L, @as(c_int, 3), "string/function/table") != 0);
+    _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((((tr == @as(c_int, 3)) or (tr == @as(c_int, 4))) or (tr == @as(c_int, 6))) or (tr == @as(c_int, 5))) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_typeerror(L, @as(c_int, 3), "string/function/table") != 0);
     luaL_buffinit(L, &b);
     if (anchor != 0) {
         p += 1;
@@ -2704,7 +2704,7 @@ pub fn str_gsub(arg_L: ?*lua_State) callconv(.c) c_int {
             };
         } else if (src < ms.src_end) {
             _ = blk: {
-                _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+                _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
                 break :blk blk_1: {
                     const tmp = (blk_2: {
                         const ref = &src;
@@ -2727,7 +2727,7 @@ pub fn str_gsub(arg_L: ?*lua_State) callconv(.c) c_int {
     if (!(changed != 0)) {
         lua_pushvalue(L, @as(c_int, 1));
     } else {
-        luaL_addlstring(&b, src, @as(usize, @bitCast(@divExact(@as(c_long, @bitCast(@intFromPtr(ms.src_end) -% @intFromPtr(src))), @sizeOf(u8)))));
+        luaL_addlstring(&b, src, @as(usize, @bitCast(@divExact(@as(isize, @bitCast(@intFromPtr(ms.src_end) -% @intFromPtr(src))), @sizeOf(u8)))));
         luaL_pushresult(&b);
     }
     lua_pushinteger(L, n);
@@ -2741,7 +2741,7 @@ pub fn addquoted(arg_b: [*c]luaL_Buffer, arg_s: [*c]const u8, arg_len: usize) ca
     var len = arg_len;
     _ = &len;
     _ = blk: {
-        _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+        _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
         break :blk blk_1: {
             const tmp = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, '"')))));
             b.*.b[blk_2: {
@@ -2761,7 +2761,7 @@ pub fn addquoted(arg_b: [*c]luaL_Buffer, arg_s: [*c]const u8, arg_len: usize) ca
     }) != 0) {
         if (((@as(c_int, @bitCast(@as(c_uint, s.*))) == @as(c_int, '"')) or (@as(c_int, @bitCast(@as(c_uint, s.*))) == @as(c_int, '\\'))) or (@as(c_int, @bitCast(@as(c_uint, s.*))) == @as(c_int, '\n'))) {
             _ = blk: {
-                _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+                _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
                 break :blk blk_1: {
                     const tmp = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, '\\')))));
                     b.*.b[blk_2: {
@@ -2774,7 +2774,7 @@ pub fn addquoted(arg_b: [*c]luaL_Buffer, arg_s: [*c]const u8, arg_len: usize) ca
                 };
             };
             _ = blk: {
-                _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+                _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
                 break :blk blk_1: {
                     const tmp = s.*;
                     b.*.b[blk_2: {
@@ -2797,7 +2797,7 @@ pub fn addquoted(arg_b: [*c]luaL_Buffer, arg_s: [*c]const u8, arg_len: usize) ca
             luaL_addstring(b, @as([*c]u8, @ptrCast(@alignCast(&buff[@as(usize, @intCast(0))]))));
         } else {
             _ = blk: {
-                _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+                _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
                 break :blk blk_1: {
                     const tmp = s.*;
                     b.*.b[blk_2: {
@@ -2813,7 +2813,7 @@ pub fn addquoted(arg_b: [*c]luaL_Buffer, arg_s: [*c]const u8, arg_len: usize) ca
         s += 1;
     }
     _ = blk: {
-        _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+        _ = (b.*.n < b.*.size) or (luaL_prepbuffsize(b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
         break :blk blk_1: {
             const tmp = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, '"')))));
             b.*.b[blk_2: {
@@ -2851,7 +2851,7 @@ pub fn addliteral(arg_L: ?*lua_State, arg_b: [*c]luaL_Buffer, arg_arg: c_int) ca
             },
             @as(c_int, 3) => {
                 {
-                    var buff: [*c]u8 = luaL_prepbuffsize(b, @as(usize, @bitCast(@as(c_long, @as(c_int, 120)))));
+                    var buff: [*c]u8 = luaL_prepbuffsize(b, @as(usize, @bitCast(@as(isize, @as(c_int, 120)))));
                     _ = &buff;
                     var nb: c_int = undefined;
                     _ = &nb;
@@ -2862,11 +2862,11 @@ pub fn addliteral(arg_L: ?*lua_State, arg_b: [*c]luaL_Buffer, arg_arg: c_int) ca
                         _ = &n;
                         var format: [*c]const u8 = if (n == (-@as(c_longlong, 9223372036854775807) - @as(c_longlong, @bitCast(@as(c_longlong, @as(c_int, 1)))))) "0x%llx" else "%lld";
                         _ = &format;
-                        nb = snprintf(buff, @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 120)))), format, @as(c_longlong, @bitCast(n)));
+                        nb = snprintf(buff, @as(usize, @bitCast(@as(isize, @as(c_int, 120)))), format, @as(c_longlong, @bitCast(n)));
                     }
                     _ = blk: {
                         const ref = &b.*.n;
-                        ref.* +%= @as(usize, @bitCast(@as(c_long, nb)));
+                        ref.* +%= @as(usize, @bitCast(@as(isize, nb)));
                         break :blk ref.*;
                     };
                     break;
@@ -2932,7 +2932,7 @@ pub fn getformat(arg_L: ?*lua_State, arg_strfrmt: [*c]const u8, arg_form: [*c]u8
     var len: usize = strspn(strfrmt, "-+#0 123456789.");
     _ = &len;
     len +%= 1;
-    if (len >= @as(usize, @bitCast(@as(c_long, @as(c_int, 32) - @as(c_int, 10))))) {
+    if (len >= @as(usize, @bitCast(@as(isize, @as(c_int, 32) - @as(c_int, 10))))) {
         _ = luaL_error(L, "invalid format (too long)");
     }
     (blk: {
@@ -2954,10 +2954,10 @@ pub fn addlenmod(arg_form: [*c]u8, arg_lenmod: [*c]const u8) callconv(.c) void {
     _ = &l;
     var lm: usize = strlen(lenmod);
     _ = &lm;
-    var spec: u8 = form[l -% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))];
+    var spec: u8 = form[l -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))];
     _ = &spec;
     _ = strcpy((form + l) - @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, 1))))), lenmod);
-    form[(l +% lm) -% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))] = spec;
+    form[(l +% lm) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))] = spec;
     form[l +% lm] = '\x00';
 }
 const union_unnamed_6 = extern union {
@@ -3006,7 +3006,7 @@ pub fn getnum(arg_fmt: [*c][*c]const u8, arg_df: c_int) callconv(.c) c_int {
                 ref.* += 1;
                 break :blk tmp;
             }).*))) - @as(c_int, '0'));
-            if (!((digit(@as(c_int, @bitCast(@as(c_uint, fmt.*.*)))) != 0) and (a <= @divTrunc(@as(c_int, @bitCast(@as(c_uint, @truncate(if (@sizeOf(usize) < @sizeOf(c_int)) ~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) else @as(usize, @bitCast(@as(c_long, @as(c_int, 2147483647)))))))) - @as(c_int, 9), @as(c_int, 10))))) break;
+            if (!((digit(@as(c_int, @bitCast(@as(c_uint, fmt.*.*)))) != 0) and (a <= @divTrunc(@as(c_int, @bitCast(@as(c_uint, @truncate(if (@sizeOf(usize) < @sizeOf(c_int)) ~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) else @as(usize, @bitCast(@as(isize, @as(c_int, 2147483647)))))))) - @as(c_int, 9), @as(c_int, 10))))) break;
         }
         return a;
     }
@@ -3021,7 +3021,7 @@ pub fn getnumlimit(arg_h: [*c]Header, arg_fmt: [*c][*c]const u8, arg_df: c_int) 
     _ = &df;
     var sz: c_int = getnum(fmt, df);
     _ = &sz;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((sz > @as(c_int, 16)) or (sz <= @as(c_int, 0))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) return luaL_error(h.*.L, "integral size (%d) out of limits [1,%d]", sz, @as(c_int, 16));
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((sz > @as(c_int, 16)) or (sz <= @as(c_int, 0))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) return luaL_error(h.*.L, "integral size (%d) out of limits [1,%d]", sz, @as(c_int, 16));
     return sz;
 }
 pub fn initheader(arg_L: ?*lua_State, arg_h: [*c]Header) callconv(.c) void {
@@ -3124,7 +3124,7 @@ pub fn getoption(arg_h: [*c]Header, arg_fmt: [*c][*c]const u8, arg_size: [*c]c_i
             },
             @as(c_int, 99) => {
                 size.* = getnum(fmt, -@as(c_int, 1));
-                if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(size.* == -@as(c_int, 1)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+                if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(size.* == -@as(c_int, 1)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
                     _ = luaL_error(h.*.L, "missing size for format option 'c'");
                 }
                 return @as(c_uint, @bitCast(Kchar));
@@ -3190,10 +3190,10 @@ pub fn getdetails(arg_h: [*c]Header, arg_totalsize: usize, arg_fmt: [*c][*c]cons
         if (@"align" > h.*.maxalign) {
             @"align" = h.*.maxalign;
         }
-        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((@"align" & (@"align" - @as(c_int, 1))) != @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+        if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((@"align" & (@"align" - @as(c_int, 1))) != @as(c_int, 0)) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
             _ = luaL_argerror(h.*.L, @as(c_int, 1), "format asks for alignment not power of 2");
         }
-        ntoalign.* = (@"align" - @as(c_int, @bitCast(@as(c_uint, @truncate(totalsize & @as(usize, @bitCast(@as(c_long, @"align" - @as(c_int, 1))))))))) & (@"align" - @as(c_int, 1));
+        ntoalign.* = (@"align" - @as(c_int, @bitCast(@as(c_uint, @truncate(totalsize & @as(usize, @bitCast(@as(isize, @"align" - @as(c_int, 1))))))))) & (@"align" - @as(c_int, 1));
     }
     return opt;
 }
@@ -3208,7 +3208,7 @@ pub fn packint(arg_b: [*c]luaL_Buffer, arg_n: lua_Unsigned, arg_islittle: c_int,
     _ = &size;
     var neg = arg_neg;
     _ = &neg;
-    var buff: [*c]u8 = luaL_prepbuffsize(b, @as(usize, @bitCast(@as(c_long, size))));
+    var buff: [*c]u8 = luaL_prepbuffsize(b, @as(usize, @bitCast(@as(isize, size))));
     _ = &buff;
     var i: c_int = undefined;
     _ = &i;
@@ -3239,7 +3239,7 @@ pub fn packint(arg_b: [*c]luaL_Buffer, arg_n: lua_Unsigned, arg_islittle: c_int,
     }
     _ = blk: {
         const ref = &b.*.n;
-        ref.* +%= @as(usize, @bitCast(@as(c_long, size)));
+        ref.* +%= @as(usize, @bitCast(@as(isize, size)));
         break :blk ref.*;
     };
 }
@@ -3253,7 +3253,7 @@ pub fn copywithendian(arg_dest: [*c]u8, arg_src: [*c]const u8, arg_size: c_int, 
     var islittle = arg_islittle;
     _ = &islittle;
     if (islittle == @as(c_int, @bitCast(@as(c_uint, nativeendian.little)))) {
-        _ = memcpy(@as(?*anyopaque, @ptrCast(dest)), @as(?*const anyopaque, @ptrCast(src)), @as(c_ulong, @bitCast(@as(c_long, size))));
+        _ = memcpy(@as(?*anyopaque, @ptrCast(dest)), @as(?*const anyopaque, @ptrCast(src)), @as(usize, @bitCast(@as(isize, size))));
     } else {
         dest += @as(usize, @bitCast(@as(isize, @intCast(size - @as(c_int, 1)))));
         while ((blk: {
@@ -3299,7 +3299,7 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
         _ = &ntoalign;
         var opt: KOption = getdetails(&h, totalsize, &fmt, &size, &ntoalign);
         _ = &opt;
-        totalsize +%= @as(usize, @bitCast(@as(c_long, ntoalign + size)));
+        totalsize +%= @as(usize, @bitCast(@as(isize, ntoalign + size)));
         while ((blk: {
             const ref = &ntoalign;
             const tmp = ref.*;
@@ -3307,7 +3307,7 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
             break :blk tmp;
         }) > @as(c_int, 0)) {
             _ = blk: {
-                _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+                _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
                 break :blk blk_1: {
                     const tmp = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0)))));
                     (&b).*.b[blk_2: {
@@ -3330,7 +3330,7 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
                         if (size < @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(lua_Integer)))))) {
                             var lim: lua_Integer = @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1)))) << @intCast((size * @as(c_int, 8)) - @as(c_int, 1));
                             _ = &lim;
-                            _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((-lim <= n) and (n < lim)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, arg, "integer overflow") != 0);
+                            _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((-lim <= n) and (n < lim)) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, arg, "integer overflow") != 0);
                         }
                         packint(&b, @as(lua_Unsigned, @bitCast(n)), h.islittle, size, @intFromBool(n < @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 0))))));
                         break;
@@ -3341,7 +3341,7 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
                         var n: lua_Integer = luaL_checkinteger(L, arg);
                         _ = &n;
                         if (size < @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(lua_Integer)))))) {
-                            _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@as(lua_Unsigned, @bitCast(n)) < (@as(lua_Unsigned, @bitCast(@as(c_longlong, @as(c_int, 1)))) << @intCast(size * @as(c_int, 8)))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, arg, "unsigned overflow") != 0);
+                            _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@as(lua_Unsigned, @bitCast(n)) < (@as(lua_Unsigned, @bitCast(@as(c_longlong, @as(c_int, 1)))) << @intCast(size * @as(c_int, 8)))) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, arg, "unsigned overflow") != 0);
                         }
                         packint(&b, @as(lua_Unsigned, @bitCast(n)), h.islittle, size, @as(c_int, 0));
                         break;
@@ -3356,7 +3356,7 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
                         copywithendian(buff, @as([*c]u8, @ptrCast(@alignCast(&f))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(f32))))), h.islittle);
                         _ = blk: {
                             const ref = &(&b).*.n;
-                            ref.* +%= @as(usize, @bitCast(@as(c_long, size)));
+                            ref.* +%= @as(usize, @bitCast(@as(isize, size)));
                             break :blk ref.*;
                         };
                         break;
@@ -3371,7 +3371,7 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
                         copywithendian(buff, @as([*c]u8, @ptrCast(@alignCast(&f))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(lua_Number))))), h.islittle);
                         _ = blk: {
                             const ref = &(&b).*.n;
-                            ref.* +%= @as(usize, @bitCast(@as(c_long, size)));
+                            ref.* +%= @as(usize, @bitCast(@as(isize, size)));
                             break :blk ref.*;
                         };
                         break;
@@ -3386,7 +3386,7 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
                         copywithendian(buff, @as([*c]u8, @ptrCast(@alignCast(&f))), @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(f64))))), h.islittle);
                         _ = blk: {
                             const ref = &(&b).*.n;
-                            ref.* +%= @as(usize, @bitCast(@as(c_long, size)));
+                            ref.* +%= @as(usize, @bitCast(@as(isize, size)));
                             break :blk ref.*;
                         };
                         break;
@@ -3398,16 +3398,16 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
                         _ = &len;
                         var s: [*c]const u8 = luaL_checklstring(L, arg, &len);
                         _ = &s;
-                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(len <= @as(usize, @bitCast(@as(c_long, size)))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, arg, "string longer than given size") != 0);
+                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(len <= @as(usize, @bitCast(@as(isize, size)))) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, arg, "string longer than given size") != 0);
                         luaL_addlstring(&b, s, len);
                         while ((blk: {
                             const ref = &len;
                             const tmp = ref.*;
                             ref.* +%= 1;
                             break :blk tmp;
-                        }) < @as(usize, @bitCast(@as(c_long, size)))) {
+                        }) < @as(usize, @bitCast(@as(isize, size)))) {
                             _ = blk: {
-                                _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+                                _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
                                 break :blk blk_1: {
                                     const tmp = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0)))));
                                     (&b).*.b[blk_2: {
@@ -3429,7 +3429,7 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
                         _ = &len;
                         var s: [*c]const u8 = luaL_checklstring(L, arg, &len);
                         _ = &s;
-                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((size >= @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(usize)))))) or (len < (@as(usize, @bitCast(@as(c_long, @as(c_int, 1)))) << @intCast(size * @as(c_int, 8))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, arg, "string length does not fit in given size") != 0);
+                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((size >= @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(usize)))))) or (len < (@as(usize, @bitCast(@as(isize, @as(c_int, 1)))) << @intCast(size * @as(c_int, 8))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, arg, "string length does not fit in given size") != 0);
                         packint(&b, @as(lua_Unsigned, @bitCast(@as(c_ulonglong, len))), h.islittle, size, @as(c_int, 0));
                         luaL_addlstring(&b, s, len);
                         totalsize +%= len;
@@ -3442,10 +3442,10 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
                         _ = &len;
                         var s: [*c]const u8 = luaL_checklstring(L, arg, &len);
                         _ = &s;
-                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(strlen(s) == len) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, arg, "string contains zeros") != 0);
+                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(strlen(s) == len) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, arg, "string contains zeros") != 0);
                         luaL_addlstring(&b, s, len);
                         _ = blk: {
-                            _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+                            _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
                             break :blk blk_1: {
                                 const tmp = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, '\x00')))));
                                 (&b).*.b[blk_2: {
@@ -3457,13 +3457,13 @@ pub fn str_pack(arg_L: ?*lua_State) callconv(.c) c_int {
                                 break :blk_1 tmp;
                             };
                         };
-                        totalsize +%= len +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))));
+                        totalsize +%= len +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
                         break;
                     }
                 },
                 @as(c_uint, @bitCast(@as(c_int, 8))) => {
                     _ = blk: {
-                        _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))) != null);
+                        _ = ((&b).*.n < (&b).*.size) or (luaL_prepbuffsize(&b, @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) != null);
                         break :blk blk_1: {
                             const tmp = @as(u8, @bitCast(@as(i8, @truncate(@as(c_int, 0)))));
                             (&b).*.b[blk_2: {
@@ -3507,10 +3507,10 @@ pub fn str_packsize(arg_L: ?*lua_State) callconv(.c) c_int {
         _ = &ntoalign;
         var opt: KOption = getdetails(&h, totalsize, &fmt, &size, &ntoalign);
         _ = &opt;
-        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((opt != @as(c_uint, @bitCast(Kstring))) and (opt != @as(c_uint, @bitCast(Kzstr)))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, @as(c_int, 1), "variable-length format") != 0);
+        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((opt != @as(c_uint, @bitCast(Kstring))) and (opt != @as(c_uint, @bitCast(Kzstr)))) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, @as(c_int, 1), "variable-length format") != 0);
         size += ntoalign;
-        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(totalsize <= ((if (@sizeOf(usize) < @sizeOf(c_int)) ~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) else @as(usize, @bitCast(@as(c_long, @as(c_int, 2147483647))))) -% @as(usize, @bitCast(@as(c_long, size))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, @as(c_int, 1), "format result too large") != 0);
-        totalsize +%= @as(usize, @bitCast(@as(c_long, size)));
+        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(totalsize <= ((if (@sizeOf(usize) < @sizeOf(c_int)) ~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) else @as(usize, @bitCast(@as(isize, @as(c_int, 2147483647))))) -% @as(usize, @bitCast(@as(isize, size))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, @as(c_int, 1), "format result too large") != 0);
+        totalsize +%= @as(usize, @bitCast(@as(isize, size)));
     }
     lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_ulonglong, totalsize))));
     return 1;
@@ -3557,7 +3557,7 @@ pub fn unpackint(arg_L: ?*lua_State, arg_str: [*c]const u8, arg_islittle: c_int,
                 if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@as(c_int, @bitCast(@as(c_uint, @as(u8, @bitCast((blk: {
                     const tmp = if (islittle != 0) i else (size - @as(c_int, 1)) - i;
                     if (tmp >= 0) break :blk str + @as(usize, @intCast(tmp)) else break :blk str - ~@as(usize, @bitCast(@as(isize, @intCast(tmp)) +% -1));
-                }).*))))) != mask) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+                }).*))))) != mask) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
                     _ = luaL_error(L, "%d-byte integer does not fit into Lua Integer", size);
                 }
             }
@@ -3576,11 +3576,11 @@ pub fn str_unpack(arg_L: ?*lua_State) callconv(.c) c_int {
     _ = &ld;
     var data: [*c]const u8 = luaL_checklstring(L, @as(c_int, 2), &ld);
     _ = &data;
-    var pos: usize = posrelatI(luaL_optinteger(L, @as(c_int, 3), @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1))))), ld) -% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))));
+    var pos: usize = posrelatI(luaL_optinteger(L, @as(c_int, 3), @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 1))))), ld) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
     _ = &pos;
     var n: c_int = 0;
     _ = &n;
-    _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(pos <= ld) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, @as(c_int, 3), "initial position out of string") != 0);
+    _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(pos <= ld) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, @as(c_int, 3), "initial position out of string") != 0);
     initheader(L, &h);
     while (@as(c_int, @bitCast(@as(c_uint, fmt.*))) != @as(c_int, '\x00')) {
         var size: c_int = undefined;
@@ -3589,8 +3589,8 @@ pub fn str_unpack(arg_L: ?*lua_State) callconv(.c) c_int {
         _ = &ntoalign;
         var opt: KOption = getdetails(&h, pos, &fmt, &size, &ntoalign);
         _ = &opt;
-        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((@as(usize, @bitCast(@as(c_long, ntoalign))) +% @as(usize, @bitCast(@as(c_long, size)))) <= (ld -% pos)) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, @as(c_int, 2), "data string too short") != 0);
-        pos +%= @as(usize, @bitCast(@as(c_long, ntoalign)));
+        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((@as(usize, @bitCast(@as(isize, ntoalign))) +% @as(usize, @bitCast(@as(isize, size)))) <= (ld -% pos)) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, @as(c_int, 2), "data string too short") != 0);
+        pos +%= @as(usize, @bitCast(@as(isize, ntoalign)));
         luaL_checkstack(L, @as(c_int, 2), "too many results");
         n += 1;
         while (true) {
@@ -3632,15 +3632,15 @@ pub fn str_unpack(arg_L: ?*lua_State) callconv(.c) c_int {
                 },
                 @as(c_uint, @bitCast(@as(c_int, 5))) => {
                     {
-                        _ = lua_pushlstring(L, data + pos, @as(usize, @bitCast(@as(c_long, size))));
+                        _ = lua_pushlstring(L, data + pos, @as(usize, @bitCast(@as(isize, size))));
                         break;
                     }
                 },
                 @as(c_uint, @bitCast(@as(c_int, 6))) => {
                     {
-                        var len: usize = @as(usize, @bitCast(@as(c_long, @truncate(unpackint(L, data + pos, h.islittle, size, @as(c_int, 0))))));
+                        var len: usize = @as(usize, @bitCast(@as(isize, @truncate(unpackint(L, data + pos, h.islittle, size, @as(c_int, 0))))));
                         _ = &len;
-                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(len <= ((ld -% pos) -% @as(usize, @bitCast(@as(c_long, size))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, @as(c_int, 2), "data string too short") != 0);
+                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(len <= ((ld -% pos) -% @as(usize, @bitCast(@as(isize, size))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, @as(c_int, 2), "data string too short") != 0);
                         _ = lua_pushlstring(L, (data + pos) + @as(usize, @bitCast(@as(isize, @intCast(size)))), len);
                         pos +%= len;
                         break;
@@ -3650,9 +3650,9 @@ pub fn str_unpack(arg_L: ?*lua_State) callconv(.c) c_int {
                     {
                         var len: usize = strlen(data + pos);
                         _ = &len;
-                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((pos +% len) < ld) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 1))))) != 0) or (luaL_argerror(L, @as(c_int, 2), "unfinished string for format 'z'") != 0);
+                        _ = (__builtin_expect(@as(c_long, @intFromBool(@intFromBool((pos +% len) < ld) != @as(c_int, 0))), @as(c_long, @as(c_int, 1))) != 0) or (luaL_argerror(L, @as(c_int, 2), "unfinished string for format 'z'") != 0);
                         _ = lua_pushlstring(L, data + pos, len);
-                        pos +%= len +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))));
+                        pos +%= len +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
                         break;
                     }
                 },
@@ -3664,9 +3664,9 @@ pub fn str_unpack(arg_L: ?*lua_State) callconv(.c) c_int {
             }
             break;
         }
-        pos +%= @as(usize, @bitCast(@as(c_long, size)));
+        pos +%= @as(usize, @bitCast(@as(isize, size)));
     }
-    lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_ulonglong, pos +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1))))))));
+    lua_pushinteger(L, @as(lua_Integer, @bitCast(@as(c_ulonglong, pos +% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))))));
     return n + @as(c_int, 1);
 }
 pub const strlib: [18]luaL_Reg = [18]luaL_Reg{
@@ -3746,7 +3746,7 @@ pub const strlib: [18]luaL_Reg = [18]luaL_Reg{
 pub fn createmetatable(arg_L: ?*lua_State) callconv(.c) void {
     var L = arg_L;
     _ = &L;
-    lua_createtable(L, @as(c_int, 0), @as(c_int, @bitCast(@as(c_uint, @truncate((@sizeOf([10]luaL_Reg) / @sizeOf(luaL_Reg)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))))));
+    lua_createtable(L, @as(c_int, 0), @as(c_int, @bitCast(@as(c_uint, @truncate((@sizeOf([10]luaL_Reg) / @sizeOf(luaL_Reg)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))))));
     luaL_setfuncs(L, @as([*c]const luaL_Reg, @ptrCast(@alignCast(&stringmetamethods[@as(usize, @intCast(0))]))), @as(c_int, 0));
     _ = lua_pushstring(L, "");
     lua_pushvalue(L, -@as(c_int, 2));

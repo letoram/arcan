@@ -15,7 +15,7 @@ pub const __builtin_isinf = c_builtins.__builtin_isinf;
 // -----------------------------------------------------------------------
 pub const wchar_t = c_uint;
 pub const errno_t = c_int;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const wint_t = c_uint;
 pub const uintmax_t = c_ulong;
 pub const sig_atomic_t = c_int;
@@ -55,11 +55,11 @@ pub const __builtin_va_list = struct___va_list_1;
 // Libc functions referenced by translated inline macros (post line 500)
 // -----------------------------------------------------------------------
 pub extern fn abort() noreturn;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
 pub extern fn strtod([*c]const u8, [*c][*c]u8) f64;
 pub extern fn strlen([*c]const u8) c_ulong;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 
 // Freestanding-safe local implementations of libc functions
 fn abs(x: c_int) c_int {
@@ -305,8 +305,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -338,8 +338,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -1230,7 +1230,7 @@ pub export fn luaK_code(arg_fs: [*c]FuncState, arg_i: Instruction) c_int {
     var f: [*c]Proto = fs.*.f;
     _ = &f;
     _ = blk: {
-        const tmp = @as([*c]Instruction, @ptrCast(@alignCast(luaM_growaux_(fs.*.ls.*.L, @as(?*anyopaque, @ptrCast(f.*.code)), fs.*.pc, &f.*.sizecode, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(Instruction))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(c_long, @as(c_int, 2147483647)))) <= (~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(Instruction))) @as(c_uint, @bitCast(@as(c_int, 2147483647))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(Instruction))))))), "opcodes"))));
+        const tmp = @as([*c]Instruction, @ptrCast(@alignCast(luaM_growaux_(fs.*.ls.*.L, @as(?*anyopaque, @ptrCast(f.*.code)), fs.*.pc, &f.*.sizecode, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(Instruction))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(isize, @as(c_int, 2147483647)))) <= (~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(Instruction))) @as(c_uint, @bitCast(@as(c_int, 2147483647))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(Instruction))))))), "opcodes"))));
         f.*.code = tmp;
         break :blk tmp;
     };
@@ -2665,7 +2665,7 @@ pub fn savelineinfo(arg_fs: [*c]FuncState, arg_f: [*c]Proto, arg_line: c_int) ca
         break :blk tmp;
     }))) >= @as(c_int, 128))) {
         _ = blk: {
-            const tmp = @as([*c]AbsLineInfo, @ptrCast(@alignCast(luaM_growaux_(fs.*.ls.*.L, @as(?*anyopaque, @ptrCast(f.*.abslineinfo)), fs.*.nabslineinfo, &f.*.sizeabslineinfo, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(AbsLineInfo))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(c_long, @as(c_int, 2147483647)))) <= (~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(AbsLineInfo))) @as(c_uint, @bitCast(@as(c_int, 2147483647))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(AbsLineInfo))))))), "lines"))));
+            const tmp = @as([*c]AbsLineInfo, @ptrCast(@alignCast(luaM_growaux_(fs.*.ls.*.L, @as(?*anyopaque, @ptrCast(f.*.abslineinfo)), fs.*.nabslineinfo, &f.*.sizeabslineinfo, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(AbsLineInfo))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(isize, @as(c_int, 2147483647)))) <= (~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(AbsLineInfo))) @as(c_uint, @bitCast(@as(c_int, 2147483647))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(AbsLineInfo))))))), "lines"))));
             f.*.abslineinfo = tmp;
             break :blk tmp;
         };
@@ -2686,7 +2686,7 @@ pub fn savelineinfo(arg_fs: [*c]FuncState, arg_f: [*c]Proto, arg_line: c_int) ca
         fs.*.iwthabs = 1;
     }
     _ = blk: {
-        const tmp = @as([*c]ls_byte, @ptrCast(@alignCast(luaM_growaux_(fs.*.ls.*.L, @as(?*anyopaque, @ptrCast(f.*.lineinfo)), pc, &f.*.sizelineinfo, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(ls_byte))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(c_long, @as(c_int, 2147483647)))) <= (~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(ls_byte))) @as(c_uint, @bitCast(@as(c_int, 2147483647))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(ls_byte))))))), "opcodes"))));
+        const tmp = @as([*c]ls_byte, @ptrCast(@alignCast(luaM_growaux_(fs.*.ls.*.L, @as(?*anyopaque, @ptrCast(f.*.lineinfo)), pc, &f.*.sizelineinfo, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(ls_byte))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(isize, @as(c_int, 2147483647)))) <= (~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(ls_byte))) @as(c_uint, @bitCast(@as(c_int, 2147483647))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(ls_byte))))))), "opcodes"))));
         f.*.lineinfo = tmp;
         break :blk tmp;
     };
@@ -2840,7 +2840,7 @@ pub fn addk(arg_fs: [*c]FuncState, arg_key: [*c]TValue, arg_v: [*c]TValue) callc
     }
     luaH_finishset(L, fs.*.ls.*.h, key, idx, &val);
     _ = blk: {
-        const tmp = @as([*c]TValue, @ptrCast(@alignCast(luaM_growaux_(L, @as(?*anyopaque, @ptrCast(f.*.k)), k, &f.*.sizek, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(TValue))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(c_long, (@as(c_int, 1) << @intCast(((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1)) + @as(c_int, 8))) - @as(c_int, 1)))) <= (~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(TValue))) @as(c_uint, @bitCast((@as(c_int, 1) << @intCast(((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1)) + @as(c_int, 8))) - @as(c_int, 1))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(TValue))))))), "constants"))));
+        const tmp = @as([*c]TValue, @ptrCast(@alignCast(luaM_growaux_(L, @as(?*anyopaque, @ptrCast(f.*.k)), k, &f.*.sizek, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(TValue))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(isize, (@as(c_int, 1) << @intCast(((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1)) + @as(c_int, 8))) - @as(c_int, 1)))) <= (~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(TValue))) @as(c_uint, @bitCast((@as(c_int, 1) << @intCast(((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1)) + @as(c_int, 8))) - @as(c_int, 1))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(TValue))))))), "constants"))));
         f.*.k = tmp;
         break :blk tmp;
     };

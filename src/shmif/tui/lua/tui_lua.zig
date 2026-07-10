@@ -362,7 +362,7 @@ pub export fn ltui_inherit(L: ?*lua_State, conn: [*c]arcan_tui_conn, T: [*c]stru
         .seek_relative = @ptrCast(@constCast(&on_seek_relative)),
         .message = @ptrCast(@constCast(&on_message)),
     };
-    meta.*.href = @as(isize, @bitCast(@as(c_long, -@as(c_int, 2))));
+    meta.*.href = @as(isize, @bitCast(@as(isize, -@as(c_int, 2))));
     if (lua_type(L, 3) == 5) {
         lua_getfield(L, 3, "handlers");
         if (lua_type(L, -1) == 5) {
@@ -605,7 +605,7 @@ pub fn dump_ltop(ctx: ?*lua_State, i_arg: c_int) callconv(.c) void {
             },
             7 => {
                 {
-                    const @"type": [*c]const u8 = match_udata(ctx, @as(isize, @bitCast(@as(c_long, i))));
+                    const @"type": [*c]const u8 = match_udata(ctx, @as(isize, @bitCast(@as(isize, i))));
                     if (@"type" != null) {
                         _ = fprintf(c.stderr, "%d\tuserdata:%s\n", i, @"type");
                     } else {
@@ -627,7 +627,7 @@ pub fn dump_stack(ctx: ?*lua_State) callconv(.c) void {
     _ = fprintf(c.stderr, "-- stack dump (%d)--\n", top);
     {
         var i: usize = 1;
-        while (i <= @as(usize, @bitCast(@as(c_long, top)))) : (i +%= 1) {
+        while (i <= @as(usize, @bitCast(@as(isize, top)))) : (i +%= 1) {
             dump_ltop(ctx, @as(c_int, @bitCast(@as(c_uint, @truncate(i)))));
         }
     }
@@ -648,7 +648,7 @@ pub fn dump_traceback(L: ?*lua_State) callconv(.c) void {
     dump_stack(L);
 }
 pub fn dump_state(T: [*c]struct_tui_lmeta) callconv(.c) void {
-    _ = fprintf(c.stderr, "tui_state:\n\thtable:%d\n\twidget:%d\n\t\tstate:%d\n\t\tclosure:%d\n", @as(c_int, @truncate(T.*.href)), T.*.widget_mode, @as(c_int, @truncate(if (T.*.widget_state == @as(isize, @bitCast(@as(c_long, -@as(c_int, 2))))) @as(isize, @bitCast(@as(c_long, -@as(c_int, 1)))) else T.*.widget_state)), @as(c_int, @truncate(if (T.*.widget_closure == @as(isize, @bitCast(@as(c_long, -@as(c_int, 2))))) @as(isize, @bitCast(@as(c_long, -@as(c_int, 1)))) else T.*.widget_closure)));
+    _ = fprintf(c.stderr, "tui_state:\n\thtable:%d\n\twidget:%d\n\t\tstate:%d\n\t\tclosure:%d\n", @as(c_int, @truncate(T.*.href)), T.*.widget_mode, @as(c_int, @truncate(if (T.*.widget_state == @as(isize, @bitCast(@as(isize, -@as(c_int, 2))))) @as(isize, @bitCast(@as(isize, -@as(c_int, 1)))) else T.*.widget_state)), @as(c_int, @truncate(if (T.*.widget_closure == @as(isize, @bitCast(@as(isize, -@as(c_int, 2))))) @as(isize, @bitCast(@as(isize, -@as(c_int, 1)))) else T.*.widget_closure)));
     if (T.*.widget_mode != c.TWND_NORMAL) {
         _ = blk: {
             _ = fprintf(c.stderr, "widget-resolve:\n");
@@ -1781,11 +1781,11 @@ pub fn init_lmeta(L: ?*lua_State, l: [*c]struct_tui_lmeta, p: [*c]struct_tui_lme
         .pending_mask = std.mem.zeroes(u8),
         .pending = zeroPending(),
         .embed = 0,
-        .tui_state = @as(isize, @bitCast(@as(c_long, -2))),
-        .href = @as(isize, @bitCast(@as(c_long, -2))),
+        .tui_state = @as(isize, @bitCast(@as(isize, -2))),
+        .href = @as(isize, @bitCast(@as(isize, -2))),
         .widget_mode = 0,
-        .widget_closure = @as(isize, @bitCast(@as(c_long, -2))),
-        .widget_state = @as(isize, @bitCast(@as(c_long, -2))),
+        .widget_closure = @as(isize, @bitCast(@as(isize, -2))),
+        .widget_state = @as(isize, @bitCast(@as(isize, -2))),
         .widget_meta = null,
         .in_callback = false,
         .blobs = null,
@@ -1810,7 +1810,7 @@ pub fn on_label(T: ?*struct_tui_context, label: [*c]const u8, act: bool, t: ?*an
     if (t == null) return false;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return false;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return false;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -1847,23 +1847,23 @@ pub fn tui_lref(L: ?*lua_State, ind: c_int, func: [*c]const u8, src: [*c]const u
     _ = src;
     if (lua_type(L, ind) != @"type") {
         _ = luaL_error(L, "requested ref of unexpected type");
-        return @as(isize, @bitCast(@as(c_long, -2)));
+        return @as(isize, @bitCast(@as(isize, -2)));
     }
     lua_pushvalue(L, ind);
-    const ret: isize = @as(isize, @bitCast(@as(c_long, luaL_ref(L, -1001000))));
+    const ret: isize = @as(isize, @bitCast(@as(isize, luaL_ref(L, -1001000))));
     return ret;
 }
 pub fn tui_lunref(L: ?*lua_State, val: isize, src: [*c]const u8, @"type": c_int) callconv(.c) isize {
     _ = src;
-    if (val == @as(isize, @bitCast(@as(c_long, -2)))) return @as(isize, @bitCast(@as(c_long, -2)));
+    if (val == @as(isize, @bitCast(@as(isize, -2)))) return @as(isize, @bitCast(@as(isize, -2)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(val)));
     if (lua_type(L, -1) != @"type") {
         _ = luaL_error(L, "requested unref of unexpected type");
-        return @as(isize, @bitCast(@as(c_long, -2)));
+        return @as(isize, @bitCast(@as(isize, -2)));
     }
     lua_settop(L, -1 - 1);
     luaL_unref(L, -1001000, @as(c_int, @truncate(val)));
-    return @as(isize, @bitCast(@as(c_long, -2)));
+    return @as(isize, @bitCast(@as(isize, -2)));
 }
 pub fn get_wndhint(ib: [*c]struct_tui_lmeta, L: ?*lua_State, ind: c_int) callconv(.c) struct_tui_constraints {
     var res: struct_tui_constraints = struct_tui_constraints{
@@ -1919,7 +1919,7 @@ pub fn on_u8(T: ?*struct_tui_context, @"u8": [*c]const u8, len: usize, t: ?*anyo
     if (t == null) return false;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return false;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return false;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -1950,7 +1950,7 @@ pub fn on_message(T: ?*struct_tui_context, msg: [*c]const u8, cont: bool, t: ?*a
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -1974,7 +1974,7 @@ pub fn on_mouse(T: ?*struct_tui_context, relative: bool, x: c_int, y: c_int, mod
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2000,7 +2000,7 @@ pub fn on_mouse_button(T: ?*struct_tui_context, x: c_int, y: c_int, subid: c_int
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2027,7 +2027,7 @@ pub fn on_key(T: ?*struct_tui_context, xkeysym: u32, scancode: u8, mods: u16, su
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2058,7 +2058,7 @@ pub fn on_recolor(T: ?*struct_tui_context, t: ?*anyopaque) callconv(.c) void {
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2080,7 +2080,7 @@ pub fn on_reset(T: ?*struct_tui_context, level: c_int, t: ?*anyopaque) callconv(
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2103,7 +2103,7 @@ pub fn on_state(T: ?*struct_tui_context, input: bool, fd: c_int, t: ?*anyopaque)
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2129,7 +2129,7 @@ pub fn on_bchunk(T: ?*struct_tui_context, input: bool, size: u64, fd: c_int, @"t
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2179,7 +2179,7 @@ pub fn on_tick(T: ?*struct_tui_context, t: ?*anyopaque) callconv(.c) void {
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2201,7 +2201,7 @@ pub fn on_utf8_paste(T: ?*struct_tui_context, str: [*c]const u8, len: usize, con
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2224,7 +2224,7 @@ pub fn on_resized(T: ?*struct_tui_context, neww: usize, newh: usize, col: usize,
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2251,7 +2251,7 @@ pub fn on_resized(T: ?*struct_tui_context, neww: usize, newh: usize, col: usize,
 pub fn on_resize(T: ?*struct_tui_context, neww: usize, newh: usize, col: usize, row: usize, t: ?*anyopaque) callconv(.c) void {
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     lua_getfield(L, -1, "resize");
     if (lua_type(L, -1) != 6) {
@@ -2305,7 +2305,7 @@ pub fn tui_phandover(L: ?*lua_State) callconv(.c) c_int {
     if (strchr(mode, 'e') == null) {
         fds_ptr[2] = null;
     }
-    const pid: pid_t = arcan_tui_handover_pipe(ib.*.unnamed_0.tui, null, path, argv, env, @ptrCast(@alignCast(&fds_ptr[0])), @as(usize, @bitCast(@as(c_long, 3))));
+    const pid: pid_t = arcan_tui_handover_pipe(ib.*.unnamed_0.tui, null, path, argv, env, @ptrCast(@alignCast(&fds_ptr[0])), @as(usize, @bitCast(@as(isize, 3))));
     ib.*.subwnd_handover = @intFromBool(pid != -1);
     if (env != null) {
         var cur: [*c][*c]u8 = env;
@@ -2344,10 +2344,10 @@ pub fn on_subwindow(T: ?*struct_tui_context, new: [*c]arcan_tui_conn, id: u32, @
     mid ^= req_cookie;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return false;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return false;
     if ((mid >= 8) or !((@as(c_int, @bitCast(@as(c_uint, meta.*.pending_mask))) & (@as(c_int, 1) << @intCast(mid))) != 0)) return false;
     const cb: isize = meta.*.pending[mid].id;
-    meta.*.pending[mid].id = @as(isize, @bitCast(@as(c_long, -2)));
+    meta.*.pending[mid].id = @as(isize, @bitCast(@as(isize, -2)));
     meta.*.pending_mask &= @as(u8, @bitCast(@as(i8, @truncate(~(@as(c_int, 1) << @intCast(mid))))));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(cb)));
     if (lua_type(L, -1) != 6) {
@@ -2390,7 +2390,7 @@ pub fn on_subwindow(T: ?*struct_tui_context, new: [*c]arcan_tui_conn, id: u32, @
     if ((@as(c_int, @bitCast(@as(c_uint, @"type"))) != TUI_WND_HANDOVER) or (nud.*.embed != 0)) {
         nud.*.tui_state = tui_lref(L, -1, "on_subwindow", "755", 7);
         var wnd_i: usize = 0;
-        while (wnd_i < @as(usize, @bitCast(@as(c_long, 64)))) : (wnd_i +%= 1) {
+        while (wnd_i < @as(usize, @bitCast(@as(isize, 64)))) : (wnd_i +%= 1) {
             if (meta.*.unnamed_0.subs[wnd_i] == null) {
                 meta.*.unnamed_0.subs[wnd_i] = ctx;
                 meta.*.submeta[wnd_i] = nud;
@@ -2414,7 +2414,7 @@ pub fn query_label(T: ?*struct_tui_context, ind: usize, country: [*c]const u8, l
     if (t == null) return false;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return false;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return false;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2426,7 +2426,7 @@ pub fn query_label(T: ?*struct_tui_context, ind: usize, country: [*c]const u8, l
         return false;
     }
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
-    lua_pushnumber(L, @floatFromInt(ind +% @as(usize, @bitCast(@as(c_long, 1)))));
+    lua_pushnumber(L, @floatFromInt(ind +% @as(usize, @bitCast(@as(isize, 1)))));
     lua_pushstring(L, country);
     lua_pushstring(L, lang);
     if (0 != lua_pcall(L, 4, 5, 0)) {
@@ -2455,7 +2455,7 @@ pub fn on_geohint(T: ?*struct_tui_context, lat: f32, longitude: f32, elev: f32, 
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2482,7 +2482,7 @@ pub fn on_visibility(T: ?*struct_tui_context, visible: bool, focus: bool, t: ?*a
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2506,7 +2506,7 @@ pub fn on_exec_state(T: ?*struct_tui_context, state: c_int, t: ?*anyopaque) call
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2543,7 +2543,7 @@ pub fn on_seek_absolute(T: ?*struct_tui_context, pct: f32, t: ?*anyopaque) callc
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2566,7 +2566,7 @@ pub fn on_seek_relative(T: ?*struct_tui_context, rows: isize, cols: isize, t: ?*
     if (t == null) return;
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
     const L: ?*lua_State = meta.*.lua;
-    if (meta.*.href == @as(isize, @bitCast(@as(c_long, -2)))) return;
+    if (meta.*.href == @as(isize, @bitCast(@as(isize, -2)))) return;
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.tui_state)));
     lua_rawgeti(L, -1001000, @as(c_int, @truncate(meta.*.href)));
     if (lua_type(L, -1) != 5) {
@@ -2587,7 +2587,7 @@ pub fn on_seek_relative(T: ?*struct_tui_context, rows: isize, cols: isize, t: ?*
 }
 pub fn on_readline_filter(ch: u32, len: usize, t: ?*anyopaque) callconv(.c) bool {
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
-    if (meta.*.widget_meta == null or (meta.*.widget_meta.?.*.unnamed_0.readline.filter == @as(isize, @bitCast(@as(c_long, -2))))) {
+    if (meta.*.widget_meta == null or (meta.*.widget_meta.?.*.unnamed_0.readline.filter == @as(isize, @bitCast(@as(isize, -2))))) {
         return true;
     }
     var buf: [4]u8 = undefined;
@@ -2614,7 +2614,7 @@ pub fn on_readline_filter(ch: u32, len: usize, t: ?*anyopaque) callconv(.c) bool
 }
 pub fn on_readline_suggest_item(item: [*c]const u8, hint: [*c]const u8, t: ?*anyopaque) callconv(.c) void {
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
-    if (meta.*.widget_meta == null or (meta.*.widget_meta.?.*.unnamed_0.readline.item == @as(isize, @bitCast(@as(c_long, -2))))) {
+    if (meta.*.widget_meta == null or (meta.*.widget_meta.?.*.unnamed_0.readline.item == @as(isize, @bitCast(@as(isize, -2))))) {
         return;
     }
     const L: ?*lua_State = meta.*.lua;
@@ -2629,13 +2629,13 @@ pub fn on_readline_suggest_item(item: [*c]const u8, hint: [*c]const u8, t: ?*any
 }
 pub fn on_readline_verify(message_1: [*c]const u8, prefix: usize, suggest: bool, t: ?*anyopaque) callconv(.c) isize {
     const meta: [*c]struct_tui_lmeta = @ptrCast(@alignCast(t));
-    if (meta.*.widget_meta == null or (meta.*.widget_meta.?.*.unnamed_0.readline.verify == @as(isize, @bitCast(@as(c_long, -2))))) {
-        return @as(isize, @bitCast(@as(c_long, -1)));
+    if (meta.*.widget_meta == null or (meta.*.widget_meta.?.*.unnamed_0.readline.verify == @as(isize, @bitCast(@as(isize, -2))))) {
+        return @as(isize, @bitCast(@as(isize, -1)));
     }
     const L: ?*lua_State = meta.*.lua;
     lua_rawgeti(meta.*.lua, -1001000, @as(c_int, @truncate(meta.*.widget_meta.?.*.unnamed_0.readline.verify)));
     lua_rawgeti(meta.*.lua, -1001000, @as(c_int, @truncate(meta.*.widget_state)));
-    var res: isize = @as(isize, @bitCast(@as(c_long, -1)));
+    var res: isize = @as(isize, @bitCast(@as(isize, -1)));
     lua_pushlstring(L, message_1, prefix);
     lua_pushstring(L, message_1);
     lua_pushboolean(L, @intFromBool(suggest));
@@ -2650,7 +2650,7 @@ pub fn on_readline_verify(message_1: [*c]const u8, prefix: usize, suggest: bool,
     } else if (lua_type(L, -1) == 3) {
         res = lua_tointeger(L, -1);
         if (res < 0) {
-            res *= @as(isize, @bitCast(@as(c_long, -1)));
+            res *= @as(isize, @bitCast(@as(isize, -1)));
         }
     }
     lua_settop(L, -1 - 1);
@@ -2820,8 +2820,8 @@ pub fn revert(L: ?*lua_State, M: [*c]struct_tui_lmeta) callconv(.c) void {
 pub fn callback_revert(L: ?*lua_State, M: [*c]struct_tui_lmeta, _: [*c]const u8, n: c_int, r: c_int) callconv(.c) void {
     const closure: isize = M.*.widget_closure;
     const state: isize = M.*.widget_state;
-    M.*.widget_closure = @as(isize, @bitCast(@as(c_long, -2)));
-    M.*.widget_state = @as(isize, @bitCast(@as(c_long, -2)));
+    M.*.widget_closure = @as(isize, @bitCast(@as(isize, -2)));
+    M.*.widget_state = @as(isize, @bitCast(@as(isize, -2)));
     revert(L, M);
     while (true) {
         if (0 != lua_pcall(L, n, r, 0)) {
@@ -3038,8 +3038,8 @@ pub fn cursor_to(L: ?*lua_State) callconv(.c) c_int {
     var rows: usize = undefined;
     var cols: usize = undefined;
     arcan_tui_dimensions(ib.*.unnamed_0.tui, &rows, &cols);
-    if ((((x >= 0) and (y >= 0)) and (@as(usize, @bitCast(@as(c_long, x))) < cols)) and (@as(usize, @bitCast(@as(c_long, y))) < rows)) {
-        arcan_tui_move_to(ib.*.unnamed_0.tui, @as(usize, @bitCast(@as(c_long, x))), @as(usize, @bitCast(@as(c_long, y))));
+    if ((((x >= 0) and (y >= 0)) and (@as(usize, @bitCast(@as(isize, x))) < cols)) and (@as(usize, @bitCast(@as(isize, y))) < rows)) {
+        arcan_tui_move_to(ib.*.unnamed_0.tui, @as(usize, @bitCast(@as(isize, x))), @as(usize, @bitCast(@as(isize, y))));
     }
     if ((col != null) or (fl != 0)) {
         _ = arcan_tui_cursor_style(ib.*.unnamed_0.tui, fl, null);
@@ -3048,7 +3048,7 @@ pub fn cursor_to(L: ?*lua_State) callconv(.c) c_int {
 }
 pub fn synch_wd(md: [*c]struct_tui_lmeta) callconv(.c) void {
     if (!(md.*.cwd != null)) {
-        md.*.cwd_sz = @as(usize, @bitCast(@as(c_long, @as(c_int, 4096) + 1)));
+        md.*.cwd_sz = @as(usize, @bitCast(@as(isize, @as(c_int, 4096) + 1)));
         md.*.cwd = @ptrCast(@alignCast(malloc(md.*.cwd_sz)));
         if (!(md.*.cwd != null)) {
             return;
@@ -3059,7 +3059,7 @@ pub fn synch_wd(md: [*c]struct_tui_lmeta) callconv(.c) void {
             switch (__errno_location().*) {
                 36 => {
                     free(@as(?*anyopaque, @ptrCast(md.*.cwd)));
-                    md.*.cwd_sz *%= @as(usize, @bitCast(@as(c_long, @as(c_int, 2))));
+                    md.*.cwd_sz *%= @as(usize, @bitCast(@as(isize, @as(c_int, 2))));
                     md.*.cwd = @ptrCast(@alignCast(malloc(md.*.cwd_sz)));
                     if (!(md.*.cwd != null)) return;
                     break;
@@ -3271,7 +3271,7 @@ pub fn tuiclose(L: ?*lua_State) callconv(.c) c_int {
         }
         compact(ib.*.parent);
     }
-    if (ib.*.href != @as(isize, @bitCast(@as(c_long, -2)))) {
+    if (ib.*.href != @as(isize, @bitCast(@as(isize, -2)))) {
         lua_rawgeti(L, -1001000, @as(c_int, @truncate(ib.*.href)));
         lua_getfield(L, -1, "destroy");
         if (lua_type(L, -1) != 6) {
@@ -3344,7 +3344,7 @@ pub fn reqwnd(L: ?*lua_State) callconv(.c) c_int {
     var req_cols: usize = 0;
     const @"type": [*c]const u8 = luaL_optlstring(L, 2, "tui", null);
     var ind: c_int = undefined;
-    var ref: isize = @as(isize, @bitCast(@as(c_long, -2)));
+    var ref: isize = @as(isize, @bitCast(@as(isize, -2)));
     if ((blk: {
         ind = 2;
         break :blk lua_type(L, 2) == 6;
@@ -3606,7 +3606,7 @@ pub fn write_border(L: ?*lua_State) callconv(.c) c_int {
     const y1: usize = @bitCast(luaL_checkinteger(L, 3));
     const x2: usize = @bitCast(luaL_checkinteger(L, 4));
     const y2: usize = @bitCast(luaL_checkinteger(L, 5));
-    const fl: c_int = @as(c_int, @truncate(luaL_optinteger(L, 7, @as(lua_Integer, @bitCast(@as(c_long, @as(c_int, 0)))))));
+    const fl: c_int = @as(c_int, @truncate(luaL_optinteger(L, 7, @as(lua_Integer, @bitCast(@as(isize, @as(c_int, 0)))))));
     var mattr: struct_tui_screen_attr = arcan_tui_defattr(ib.*.unnamed_0.tui, null);
     if (lua_type(L, 6) == 5) {
         apply_table(L, 6, &mattr);
@@ -3700,7 +3700,7 @@ pub fn set_flags(L: ?*lua_State) callconv(.c) c_int {
     var flags: u32 = @bitCast(TUI_ALTERNATE);
     {
         var i: usize = 2;
-        while (i <= @as(usize, @bitCast(@as(c_long, lua_gettop(L))))) : (i +%= 1) {
+        while (i <= @as(usize, @bitCast(@as(isize, lua_gettop(L))))) : (i +%= 1) {
             const val: u32 = @as(u32, @bitCast(@as(c_int, @truncate(luaL_checkinteger(L, @as(c_int, @intCast(i)))))));
             if ((val != 0) and ((val & (val -% 1)) == 0)) {
                 flags |= val;
@@ -3849,8 +3849,8 @@ pub fn contentsize(L: ?*lua_State) callconv(.c) c_int {
     }
     const row_ofs: usize = @bitCast(luaL_checkinteger(L, 2));
     const row_tot: usize = @bitCast(luaL_checkinteger(L, 3));
-    const col_ofs: usize = @bitCast(luaL_optinteger(L, 4, @as(lua_Integer, @bitCast(@as(c_long, @as(c_int, 0))))));
-    const col_tot: usize = @bitCast(luaL_optinteger(L, 5, @as(lua_Integer, @bitCast(@as(c_long, @as(c_int, 0))))));
+    const col_ofs: usize = @bitCast(luaL_optinteger(L, 4, @as(lua_Integer, @bitCast(@as(isize, @as(c_int, 0))))));
+    const col_tot: usize = @bitCast(luaL_optinteger(L, 5, @as(lua_Integer, @bitCast(@as(isize, @as(c_int, 0))))));
     arcan_tui_content_size(ib.*.unnamed_0.tui, row_ofs, row_tot, col_ofs, col_tot);
     return 0;
 }
@@ -3871,7 +3871,7 @@ pub fn sendkey(L: ?*lua_State) callconv(.c) c_int {
         const ref = &ind;
         ref.* +%= 1;
         break :blk ref.*;
-    }) <= @as(usize, @bitCast(@as(c_long, lua_gettop(L))))) {
+    }) <= @as(usize, @bitCast(@as(isize, lua_gettop(L))))) {
         if (lua_type(L, @as(c_int, @intCast(ind))) == 4) {
             if (label != null) {
                 _ = luaL_error(L, "sendkey, label provided twice");
@@ -3988,9 +3988,9 @@ pub fn readline(L: ?*lua_State) callconv(.c) c_int {
         .parent = null,
         .unnamed_0 = .{
             .readline = .{
-                .verify = @as(isize, @bitCast(@as(c_long, -2))),
-                .filter = @as(isize, @bitCast(@as(c_long, -2))),
-                .item = @as(isize, @bitCast(@as(c_long, -2))),
+                .verify = @as(isize, @bitCast(@as(isize, -2))),
+                .filter = @as(isize, @bitCast(@as(isize, -2))),
+                .item = @as(isize, @bitCast(@as(isize, -2))),
                 .history = null,
                 .history_sz = std.mem.zeroes(usize),
                 .suggest = null,
@@ -4003,19 +4003,19 @@ pub fn readline(L: ?*lua_State) callconv(.c) c_int {
         var ok: bool = undefined;
         var vl: c_int = intblint(L, tbl, "anchor", &ok);
         if (ok) {
-            opts.anchor_row = @as(isize, @bitCast(@as(c_long, vl)));
+            opts.anchor_row = @as(isize, @bitCast(@as(isize, vl)));
         }
         vl = intblint(L, tbl, "rows", &ok);
         if (ok) {
-            opts.n_rows = @as(usize, @bitCast(@as(c_long, vl)));
+            opts.n_rows = @as(usize, @bitCast(@as(isize, vl)));
         }
         vl = intblint(L, tbl, "margin_left", &ok);
         if ((@as(c_int, @intFromBool(ok)) != 0) and (vl >= 0)) {
-            opts.margin_left = @as(usize, @bitCast(@as(c_long, c.abs(vl))));
+            opts.margin_left = @as(usize, @bitCast(@as(isize, c.abs(vl))));
         }
         vl = intblint(L, tbl, "margin_right", &ok);
         if ((@as(c_int, @intFromBool(ok)) != 0) and (vl >= 0)) {
-            opts.margin_right = @as(usize, @bitCast(@as(c_long, c.abs(vl))));
+            opts.margin_right = @as(usize, @bitCast(@as(isize, c.abs(vl))));
         }
         if (intblbool(L, tbl, "cancellable")) {
             opts.allow_exit = true;
@@ -4199,20 +4199,20 @@ pub fn table_to_list(L: ?*lua_State, M: [*c]struct_widget_meta, ind: c_int) call
         free(@as(?*anyopaque, @ptrCast(M.*.unnamed_0.listview.ents)));
         M.*.unnamed_0.listview.ents = null;
     }
-    const tmplist: [*c]struct_tui_list_entry = @ptrCast(@alignCast(malloc(@sizeOf(struct_tui_list_entry) *% @as(c_ulong, @bitCast(@as(c_long, nelems))))));
+    const tmplist: [*c]struct_tui_list_entry = @ptrCast(@alignCast(malloc(@sizeOf(struct_tui_list_entry) *% @as(usize, @bitCast(@as(isize, nelems))))));
     if (tmplist == null) {
         _ = luaL_error(L, "listview(table, closure) - couldn't store table");
     }
     {
         var i: usize = 0;
-        while (i < @as(usize, @bitCast(@as(c_long, nelems)))) : (i +%= 1) {
+        while (i < @as(usize, @bitCast(@as(isize, nelems)))) : (i +%= 1) {
             lua_rawgeti(L, 2, @as(c_int, @bitCast(@as(c_uint, @truncate(i +% 1)))));
             extract_listent(L, tmplist, i);
             lua_settop(L, -1 - 1);
         }
     }
     M.*.unnamed_0.listview.ents = tmplist;
-    M.*.unnamed_0.listview.n_ents = @as(usize, @bitCast(@as(c_long, nelems)));
+    M.*.unnamed_0.listview.n_ents = @as(usize, @bitCast(@as(isize, nelems)));
 }
 pub fn listwnd(L: ?*lua_State) callconv(.c) c_int {
     const ib: [*c]struct_tui_lmeta = @ptrCast(@alignCast(luaL_checkudata(L, 1, "Arcan TUI")));
@@ -4290,7 +4290,7 @@ pub fn readline_prompt(L: ?*lua_State) callconv(.c) c_int {
                 } else if (lua_type(L, -1) == 4) {
                     const msg: [*c]const u8 = lua_tolstring(L, -1, null);
                     const len: isize = utf8len(msg);
-                    if (@as(isize, @bitCast(@as(c_long, -@as(c_int, 1)))) == len) {
+                    if (@as(isize, @bitCast(@as(isize, -@as(c_int, 1)))) == len) {
                         _ = luaL_error(L, "invalid utf8 string in prompt");
                     }
                     ltot +%= @as(usize, @bitCast(len));
@@ -4348,7 +4348,7 @@ pub fn readline_prompt(L: ?*lua_State) callconv(.c) c_int {
     } else if (lua_type(L, 2) == 4) {
         var msg: [*c]const u8 = lua_tolstring(L, 2, null);
         const len: isize = utf8len(msg);
-        if (@as(isize, @bitCast(@as(c_long, -@as(c_int, 1)))) == len) {
+        if (@as(isize, @bitCast(@as(isize, -@as(c_int, 1)))) == len) {
             _ = luaL_error(L, "invalid utf8 string in prompt");
         }
         n_cells = @as(usize, @bitCast(len + 1));
@@ -4603,7 +4603,7 @@ pub fn readline_history(L: ?*lua_State) callconv(.c) c_int {
         _ = luaL_error(L, "set_history(table) - negative length");
     }
     if (nelem != 0) {
-        new_history = @ptrCast(@alignCast(malloc(@as(c_ulong, @bitCast(nelem)) *% @sizeOf([*c]u8))));
+        new_history = @ptrCast(@alignCast(malloc(@as(usize, @bitCast(nelem)) *% @sizeOf([*c]u8))));
         if (new_history == null) {
             _ = luaL_error(L, "set_history(alloc) - out of memory");
         }
@@ -4636,9 +4636,9 @@ pub fn listwnd_pos(L: ?*lua_State) callconv(.c) c_int {
         _ = luaL_error(L, "readline: parent window closed");
     }
     if (ib.*.widget_mode != c.TWND_LISTWND) return 0;
-    const new: c_int = @truncate(luaL_optinteger(L, 2, @as(lua_Integer, @bitCast(@as(c_long, -@as(c_int, 1))))));
+    const new: c_int = @truncate(luaL_optinteger(L, 2, @as(lua_Integer, @bitCast(@as(isize, -@as(c_int, 1))))));
     if (new > 0) {
-        arcan_tui_listwnd_setpos(ib.*.unnamed_0.tui, @as(usize, @bitCast(@as(c_long, new))));
+        arcan_tui_listwnd_setpos(ib.*.unnamed_0.tui, @as(usize, @bitCast(@as(isize, new))));
     }
     const pos: usize = arcan_tui_listwnd_tell(ib.*.unnamed_0.tui);
     lua_pushnumber(L, @as(lua_Number, @floatFromInt(pos + 1)));
@@ -4655,7 +4655,7 @@ pub fn listwnd_update(L: ?*lua_State) callconv(.c) c_int {
     }
     if (ib.*.widget_mode != c.TWND_LISTWND) return 0;
     var pos: c_int = @intFromFloat(luaL_checknumber(L, 2));
-    if ((pos <= 0) or (@as(usize, @bitCast(@as(c_long, pos))) >= meta.*.unnamed_0.listview.n_ents)) {
+    if ((pos <= 0) or (@as(usize, @bitCast(@as(isize, pos))) >= meta.*.unnamed_0.listview.n_ents)) {
         _ = luaL_error(L, "listview:update(index, tbl) - index out of bounds");
     }
     pos -= 1;
@@ -4663,7 +4663,7 @@ pub fn listwnd_update(L: ?*lua_State) callconv(.c) c_int {
         _ = luaL_error(L, "listview:update(index, tbl) - tbl argument bad / missing");
     }
     lua_pushvalue(L, 3);
-    extract_listent(L, meta.*.unnamed_0.listview.ents, @as(usize, @bitCast(@as(c_long, pos))));
+    extract_listent(L, meta.*.unnamed_0.listview.ents, @as(usize, @bitCast(@as(isize, pos))));
     lua_settop(L, -1 - 1);
     arcan_tui_listwnd_dirty(ib.*.unnamed_0.tui);
     return 0;
@@ -5224,7 +5224,7 @@ pub fn tui_hasglyph(L: ?*lua_State) callconv(.c) c_int {
                 work[i] = buf[i];
             }
         }
-        if (@as(isize, @bitCast(@as(c_long, -@as(c_int, 1)))) == arcan_tui_utf8ucs4(@ptrCast(&work[0]), &cp)) {
+        if (@as(isize, @bitCast(@as(isize, -@as(c_int, 1)))) == arcan_tui_utf8ucs4(@ptrCast(&work[0]), &cp)) {
             lua_pushboolean(L, 0);
             lua_pushboolean(L, 0);
             return 2;

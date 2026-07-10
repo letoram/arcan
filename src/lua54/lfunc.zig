@@ -61,7 +61,7 @@ pub const wchar_t = c_uint;
 pub const char16_t = c_ushort;
 pub const char32_t = c_uint;
 pub const errno_t = c_int;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const wint_t = c_uint;
 pub const bool32 = c_int;
 pub const intmax_t = c_long;
@@ -288,17 +288,17 @@ pub extern fn heapsort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaqu
 pub extern fn mergesort(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.c) c_int) c_int;
 pub extern fn mergesort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque, ?*anyopaque) callconv(.c) c_int, ?*anyopaque) c_int;
 pub extern fn free(?*anyopaque) void;
-pub extern fn malloc(c_ulong) ?*anyopaque;
-pub extern fn calloc(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn memalign(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
+pub extern fn malloc(usize) ?*anyopaque;
+pub extern fn calloc(usize, usize) ?*anyopaque;
+pub extern fn memalign(usize, usize) ?*anyopaque;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
 pub extern fn realloc_in_place(?*anyopaque, usize) ?*anyopaque;
 pub extern fn reallocarray(?*anyopaque, usize, usize) ?*anyopaque;
 pub extern fn valloc(usize) ?*anyopaque;
 pub extern fn pvalloc(usize) ?*anyopaque;
 pub extern fn strdup([*c]const u8) [*c]u8;
-pub extern fn strndup([*c]const u8, c_ulong) [*c]u8;
-pub extern fn aligned_alloc(c_ulong, c_ulong) ?*anyopaque;
+pub extern fn strndup([*c]const u8, usize) [*c]u8;
+pub extern fn aligned_alloc(usize, usize) ?*anyopaque;
 pub extern fn posix_memalign([*c]?*anyopaque, usize, usize) c_int;
 pub extern fn mallopt(c_int, c_int) c_int;
 pub extern fn malloc_trim(usize) c_int;
@@ -381,35 +381,35 @@ pub extern fn fcvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn ecvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn gcvt(f64, c_int, [*c]u8) [*c]u8;
 pub extern fn at_quick_exit(?*const fn () callconv(.c) void) c_int;
-pub extern fn memset(?*anyopaque, c_int, c_ulong) ?*anyopaque;
-pub extern fn memmove(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memcpy(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
+pub extern fn memset(?*anyopaque, c_int, usize) ?*anyopaque;
+pub extern fn memmove(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
+pub extern fn memcpy(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
 pub extern fn hexpcpy([*c]u8, ?*const anyopaque, usize) [*c]u8;
-pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
+pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn strlen([*c]const u8) c_ulong;
 pub extern fn strnlen([*c]const u8, usize) usize;
 pub extern fn strnlen_s([*c]const u8, usize) usize;
 pub extern fn strchr([*c]const u8, c_int) [*c]u8;
-pub extern fn memchr(?*const anyopaque, c_int, c_ulong) ?*anyopaque;
+pub extern fn memchr(?*const anyopaque, c_int, usize) ?*anyopaque;
 pub extern fn rawmemchr(?*const anyopaque, c_int) ?*anyopaque;
 pub extern fn wcslen([*c]const c_uint) c_ulong;
 pub extern fn wcsnlen([*c]const wchar_t, usize) usize;
 pub extern fn wcsnlen_s([*c]const wchar_t, usize) usize;
 pub extern fn wcschr([*c]const c_uint, c_uint) [*c]c_uint;
-pub extern fn wmemchr([*c]const c_uint, c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemchr([*c]const c_uint, c_uint, usize) [*c]c_uint;
 pub extern fn wcschrnul([*c]const wchar_t, wchar_t) [*c]wchar_t;
 pub extern fn strstr([*c]const u8, [*c]const u8) [*c]u8;
 pub extern fn wcsstr([*c]const wchar_t, [*c]const wchar_t) [*c]wchar_t;
 pub extern fn strcmp([*c]const u8, [*c]const u8) c_int;
-pub extern fn strncmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcscmp([*c]const c_uint, [*c]const c_uint) c_int;
-pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
-pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
+pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
+pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
 pub extern fn strcasecmp([*c]const u8, [*c]const u8) c_int;
 pub extern fn wcscasecmp([*c]const wchar_t, [*c]const wchar_t) c_int;
-pub extern fn strncasecmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncasecmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcsncasecmp([*c]const wchar_t, [*c]const wchar_t, usize) c_int;
 pub extern fn strrchr([*c]const u8, c_int) [*c]u8;
 pub extern fn wcsrchr([*c]const wchar_t, wchar_t) [*c]wchar_t;
@@ -422,21 +422,21 @@ pub extern fn wcscspn([*c]const wchar_t, [*c]const wchar_t) usize;
 pub extern fn memfrob(?*anyopaque, usize) ?*anyopaque;
 pub extern fn strcoll([*c]const u8, [*c]const u8) c_int;
 pub extern fn stpcpy([*c]u8, [*c]const u8) [*c]u8;
-pub extern fn stpncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn stpncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strcat([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscat([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strxfrm([*c]u8, [*c]const u8, c_ulong) c_ulong;
+pub extern fn strxfrm([*c]u8, [*c]const u8, usize) usize;
 pub extern fn strcpy([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscpy([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn wcsncat([*c]wchar_t, [*c]const wchar_t, usize) [*c]wchar_t;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strtok([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn strtok_r([*c]u8, [*c]const u8, [*c][*c]u8) [*c]u8;
 pub extern fn wcstok([*c]wchar_t, [*c]const wchar_t, [*c][*c]wchar_t) [*c]wchar_t;
 pub extern fn wmemset([*c]wchar_t, wchar_t, usize) [*c]wchar_t;
-pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
-pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
+pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
 pub extern fn strfmon([*c]u8, usize, [*c]const u8, ...) isize;
 pub extern fn a64l([*c]const u8) c_long;
 pub extern fn l64a(c_long) [*c]u8;
@@ -466,9 +466,9 @@ pub extern fn strsignal(c_int) [*c]u8;
 pub extern fn strerror(c_int) [*c]u8;
 pub extern fn strerror_r(c_int, [*c]u8, usize) errno_t;
 pub extern fn __xpg_strerror_r(c_int, [*c]u8, usize) [*c]u8;
-pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
-pub extern fn bcopy(?*const anyopaque, ?*anyopaque, c_ulong) void;
-pub extern fn bzero(?*anyopaque, c_ulong) void;
+pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
+pub extern fn bcopy(?*const anyopaque, ?*anyopaque, usize) void;
+pub extern fn bzero(?*anyopaque, usize) void;
 pub extern fn index([*c]const u8, c_int) [*c]u8;
 pub extern fn rindex([*c]const u8, c_int) [*c]u8;
 pub extern fn mktemp([*c]u8) [*c]u8;
@@ -972,8 +972,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -1005,8 +1005,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -1474,7 +1474,7 @@ pub export fn luaF_newCclosure(arg_L: [*c]lua_State, arg_nupvals: c_int) [*c]CCl
     _ = &L;
     var nupvals = arg_nupvals;
     _ = &nupvals;
-    var o: [*c]GCObject = luaC_newobj(L, @as(c_int, 6) | (@as(c_int, 2) << @intCast(4)), @as(usize, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, @truncate(@offsetOf(struct_CClosure, "upvalue"))))) + (@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(TValue))))) * nupvals)))));
+    var o: [*c]GCObject = luaC_newobj(L, @as(c_int, 6) | (@as(c_int, 2) << @intCast(4)), @as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, @truncate(@offsetOf(struct_CClosure, "upvalue"))))) + (@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(TValue))))) * nupvals)))));
     _ = &o;
     var c: [*c]CClosure = blk: {
         _ = @as(c_int, 0);
@@ -1489,7 +1489,7 @@ pub export fn luaF_newLclosure(arg_L: [*c]lua_State, arg_nupvals: c_int) [*c]LCl
     _ = &L;
     var nupvals = arg_nupvals;
     _ = &nupvals;
-    var o: [*c]GCObject = luaC_newobj(L, @as(c_int, 6) | (@as(c_int, 0) << @intCast(4)), @as(usize, @bitCast(@as(c_long, @as(c_int, @bitCast(@as(c_uint, @truncate(@offsetOf(struct_LClosure, "upvals"))))) + (@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([*c]TValue))))) * nupvals)))));
+    var o: [*c]GCObject = luaC_newobj(L, @as(c_int, 6) | (@as(c_int, 0) << @intCast(4)), @as(usize, @bitCast(@as(isize, @as(c_int, @bitCast(@as(c_uint, @truncate(@offsetOf(struct_LClosure, "upvals"))))) + (@as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([*c]TValue))))) * nupvals)))));
     _ = &o;
     var c: [*c]LClosure = blk: {
         _ = @as(c_int, 0);
@@ -1581,11 +1581,11 @@ pub export fn luaF_newtbcupval(arg_L: [*c]lua_State, arg_level: StkId) void {
     _ = @as(c_int, 0);
     if ((@as(c_int, @bitCast(@as(c_uint, (&level.*.val).*.tt_))) == (@as(c_int, 1) | (@as(c_int, 0) << @intCast(4)))) or ((@as(c_int, @bitCast(@as(c_uint, (&level.*.val).*.tt_))) & @as(c_int, 15)) == @as(c_int, 0))) return;
     checkclosemth(L, level);
-    while (@as(c_ulong, @bitCast(@as(c_ulong, @as(c_uint, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(level) -% @intFromPtr(L.*.tbclist.p))), @sizeOf(StackValue))))))))) > ((@as(c_ulong, 256) << @intCast((@sizeOf(c_ushort) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8)))))) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))) {
-        L.*.tbclist.p += (@as(c_ulong, 256) << @intCast((@sizeOf(c_ushort) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8)))))) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))));
+    while (@as(usize, @bitCast(@as(usize, @as(c_uint, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(level) -% @intFromPtr(L.*.tbclist.p))), @sizeOf(StackValue))))))))) > ((@as(c_ulong, 256) << @intCast((@sizeOf(c_ushort) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) *% @as(usize, @bitCast(@as(isize, @as(c_int, 8)))))) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))) {
+        L.*.tbclist.p += (@as(c_ulong, 256) << @intCast((@sizeOf(c_ushort) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) *% @as(usize, @bitCast(@as(isize, @as(c_int, 8)))))) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
         L.*.tbclist.p.*.tbclist.delta = 0;
     }
-    level.*.tbclist.delta = @as(c_ushort, @bitCast(@as(c_short, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(level) -% @intFromPtr(L.*.tbclist.p))), @sizeOf(StackValue))))));
+    level.*.tbclist.delta = @as(c_ushort, @bitCast(@as(c_short, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(level) -% @intFromPtr(L.*.tbclist.p))), @sizeOf(StackValue))))));
     L.*.tbclist.p = level;
 }
 pub export fn luaF_closeupval(arg_L: [*c]lua_State, arg_level: StkId) void {
@@ -1671,7 +1671,7 @@ pub export fn luaF_close(arg_L: [*c]lua_State, arg_level: StkId, arg_status: c_i
     _ = &status;
     var yy = arg_yy;
     _ = &yy;
-    var levelrel: ptrdiff_t = @divExact(@as(c_long, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(level)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
+    var levelrel: ptrdiff_t = @divExact(@as(isize, @bitCast(@intFromPtr(@as([*c]u8, @ptrCast(@alignCast(level)))) -% @intFromPtr(@as([*c]u8, @ptrCast(@alignCast(L.*.stack.p)))))), @sizeOf(u8));
     _ = &levelrel;
     luaF_closeupval(L, level);
     while (L.*.tbclist.p >= level) {
@@ -1697,13 +1697,13 @@ pub export fn luaF_freeproto(arg_L: [*c]lua_State, arg_f: [*c]Proto) void {
     _ = &L;
     var f = arg_f;
     _ = &f;
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.code)), @as(c_ulong, @bitCast(@as(c_long, f.*.sizecode))) *% @sizeOf(Instruction));
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.p)), @as(c_ulong, @bitCast(@as(c_long, f.*.sizep))) *% @sizeOf([*c]struct_Proto));
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.k)), @as(c_ulong, @bitCast(@as(c_long, f.*.sizek))) *% @sizeOf(TValue));
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.lineinfo)), @as(c_ulong, @bitCast(@as(c_long, f.*.sizelineinfo))) *% @sizeOf(ls_byte));
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.abslineinfo)), @as(c_ulong, @bitCast(@as(c_long, f.*.sizeabslineinfo))) *% @sizeOf(AbsLineInfo));
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.locvars)), @as(c_ulong, @bitCast(@as(c_long, f.*.sizelocvars))) *% @sizeOf(LocVar));
-    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.upvalues)), @as(c_ulong, @bitCast(@as(c_long, f.*.sizeupvalues))) *% @sizeOf(Upvaldesc));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.code)), @as(usize, @bitCast(@as(isize, f.*.sizecode))) *% @sizeOf(Instruction));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.p)), @as(usize, @bitCast(@as(isize, f.*.sizep))) *% @sizeOf([*c]struct_Proto));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.k)), @as(usize, @bitCast(@as(isize, f.*.sizek))) *% @sizeOf(TValue));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.lineinfo)), @as(usize, @bitCast(@as(isize, f.*.sizelineinfo))) *% @sizeOf(ls_byte));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.abslineinfo)), @as(usize, @bitCast(@as(isize, f.*.sizeabslineinfo))) *% @sizeOf(AbsLineInfo));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.locvars)), @as(usize, @bitCast(@as(isize, f.*.sizelocvars))) *% @sizeOf(LocVar));
+    luaM_free_(L, @as(?*anyopaque, @ptrCast(f.*.upvalues)), @as(usize, @bitCast(@as(isize, f.*.sizeupvalues))) *% @sizeOf(Upvaldesc));
     luaM_free_(L, @as(?*anyopaque, @ptrCast(f)), @sizeOf(Proto));
 }
 pub export fn luaF_getlocalname(arg_f: [*c]const Proto, arg_local_number: c_int, arg_pc: c_int) [*c]const u8 {
@@ -1890,7 +1890,7 @@ pub fn checkclosemth(arg_L: [*c]lua_State, arg_level: StkId) callconv(.c) void {
     var tm: [*c]const TValue = luaT_gettmbyobj(L, &level.*.val, @as(c_uint, @bitCast(TM_CLOSE)));
     _ = &tm;
     if ((@as(c_int, @bitCast(@as(c_uint, tm.*.tt_))) & @as(c_int, 15)) == @as(c_int, 0)) {
-        var idx: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(c_long, @bitCast(@intFromPtr(level) -% @intFromPtr(L.*.ci.*.func.p))), @sizeOf(StackValue))))));
+        var idx: c_int = @as(c_int, @bitCast(@as(c_int, @truncate(@divExact(@as(isize, @bitCast(@intFromPtr(level) -% @intFromPtr(L.*.ci.*.func.p))), @sizeOf(StackValue))))));
         _ = &idx;
         var vname: [*c]const u8 = luaG_findlocal(L, L.*.ci, idx, null);
         _ = &vname;
@@ -1929,7 +1929,7 @@ pub fn poptbclist(arg_L: [*c]lua_State) callconv(.c) void {
     _ = @as(c_int, 0);
     tbc -= @as(usize, @bitCast(@as(isize, @intCast(@as(c_int, @bitCast(@as(c_uint, tbc.*.tbclist.delta)))))));
     while ((tbc > L.*.stack.p) and (@as(c_int, @bitCast(@as(c_uint, tbc.*.tbclist.delta))) == @as(c_int, 0))) {
-        tbc -= (@as(c_ulong, 256) << @intCast((@sizeOf(c_ushort) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8)))))) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))));
+        tbc -= (@as(c_ulong, 256) << @intCast((@sizeOf(c_ushort) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))) *% @as(usize, @bitCast(@as(isize, @as(c_int, 8)))))) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))));
     }
     L.*.tbclist.p = tbc;
 }

@@ -2906,6 +2906,11 @@ pub fn init(extra_extensions: []const [*:0]const u8) !*VkEnv {
             "libMoltenVK.dylib",
             "/opt/homebrew/lib/libMoltenVK.dylib",
             "/usr/local/lib/libMoltenVK.dylib",
+        } else if (comptime builtin.os.tag == .windows) &.{
+            // The loader ships as vulkan-1.dll; for a software-only guest
+            // (QEMU, no GPU) drop a lavapipe ICD + its vulkan-1.dll alongside
+            // or on PATH. DynLib.open goes through LoadLibrary (dlopen).
+            "vulkan-1.dll",
         } else &.{"libvulkan.so.1"};
         var lib: std.DynLib = for (candidates) |cand| {
             if (std.DynLib.open(cand)) |l| {

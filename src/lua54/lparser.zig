@@ -12,7 +12,7 @@ pub const __builtin_isinf = c_builtins.__builtin_isinf;
 // C type aliases needed by Lua and libc declarations below
 pub const wchar_t = c_uint;
 pub const errno_t = c_int;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const wint_t = c_uint;
 pub const uintmax_t = c_ulong;
 pub const sig_atomic_t = c_int;
@@ -270,8 +270,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -303,8 +303,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -1605,7 +1605,7 @@ pub fn codename(ls: [*c]LexState, e: [*c]expdesc) callconv(.c) void {
 pub fn registerlocalvar(ls: [*c]LexState, fs: [*c]FuncState, varname: [*c]TString) callconv(.c) c_int {
     const f: [*c]Proto = fs.*.f;
     var oldsize: c_int = f.*.sizelocvars;
-    f.*.locvars = @as([*c]LocVar, @ptrCast(@alignCast(luaM_growaux_(ls.*.L, @as(?*anyopaque, @ptrCast(f.*.locvars)), @as(c_int, @bitCast(@as(c_int, fs.*.ndebugvars))), &f.*.sizelocvars, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(LocVar))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(c_long, 32767))) <= (~@as(usize, @bitCast(@as(c_long, 0))) / @sizeOf(LocVar))) @as(c_uint, @bitCast(@as(c_int, 32767))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(c_long, 0))) / @sizeOf(LocVar))))))), "local variables"))));
+    f.*.locvars = @as([*c]LocVar, @ptrCast(@alignCast(luaM_growaux_(ls.*.L, @as(?*anyopaque, @ptrCast(f.*.locvars)), @as(c_int, @bitCast(@as(c_int, fs.*.ndebugvars))), &f.*.sizelocvars, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(LocVar))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(isize, 32767))) <= (~@as(usize, @bitCast(@as(isize, 0))) / @sizeOf(LocVar))) @as(c_uint, @bitCast(@as(c_int, 32767))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(isize, 0))) / @sizeOf(LocVar))))))), "local variables"))));
     while (oldsize < f.*.sizelocvars) {
         (blk: {
             const tmp = oldsize;
@@ -1631,7 +1631,7 @@ pub fn new_localvar(ls: [*c]LexState, name: [*c]TString) callconv(.c) c_int {
     const fs: [*c]FuncState = ls.*.fs;
     const dyd: [*c]Dyndata = ls.*.dyd;
     checklimit(fs, (dyd.*.actvar.n + 1) - fs.*.firstlocal, 200, "local variables");
-    dyd.*.actvar.arr = @as([*c]Vardesc, @ptrCast(@alignCast(luaM_growaux_(L, @as(?*anyopaque, @ptrCast(dyd.*.actvar.arr)), dyd.*.actvar.n + 1, &dyd.*.actvar.size, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(Vardesc))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(c_long, 65535))) <= (~@as(usize, @bitCast(@as(c_long, 0))) / @sizeOf(Vardesc))) @as(c_uint, @bitCast(@as(c_int, 65535))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(c_long, 0))) / @sizeOf(Vardesc))))))), "local variables"))));
+    dyd.*.actvar.arr = @as([*c]Vardesc, @ptrCast(@alignCast(luaM_growaux_(L, @as(?*anyopaque, @ptrCast(dyd.*.actvar.arr)), dyd.*.actvar.n + 1, &dyd.*.actvar.size, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(Vardesc))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(isize, 65535))) <= (~@as(usize, @bitCast(@as(isize, 0))) / @sizeOf(Vardesc))) @as(c_uint, @bitCast(@as(c_int, 65535))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(isize, 0))) / @sizeOf(Vardesc))))))), "local variables"))));
     const idx = dyd.*.actvar.n;
     dyd.*.actvar.n += 1;
     const @"var": [*c]Vardesc = &(blk: {
@@ -1750,7 +1750,7 @@ pub fn allocupvalue(fs: [*c]FuncState) callconv(.c) [*c]Upvaldesc {
     const f: [*c]Proto = fs.*.f;
     var oldsize: c_int = f.*.sizeupvalues;
     checklimit(fs, @as(c_int, @bitCast(@as(c_uint, fs.*.nups))) + 1, 255, "upvalues");
-    f.*.upvalues = @as([*c]Upvaldesc, @ptrCast(@alignCast(luaM_growaux_(fs.*.ls.*.L, @as(?*anyopaque, @ptrCast(f.*.upvalues)), @as(c_int, @bitCast(@as(c_uint, fs.*.nups))), &f.*.sizeupvalues, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(Upvaldesc))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(c_long, 255))) <= (~@as(usize, @bitCast(@as(c_long, 0))) / @sizeOf(Upvaldesc))) @as(c_uint, @bitCast(@as(c_int, 255))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(c_long, 0))) / @sizeOf(Upvaldesc))))))), "upvalues"))));
+    f.*.upvalues = @as([*c]Upvaldesc, @ptrCast(@alignCast(luaM_growaux_(fs.*.ls.*.L, @as(?*anyopaque, @ptrCast(f.*.upvalues)), @as(c_int, @bitCast(@as(c_uint, fs.*.nups))), &f.*.sizeupvalues, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(Upvaldesc))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(isize, 255))) <= (~@as(usize, @bitCast(@as(isize, 0))) / @sizeOf(Upvaldesc))) @as(c_uint, @bitCast(@as(c_int, 255))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(isize, 0))) / @sizeOf(Upvaldesc))))))), "upvalues"))));
     while (oldsize < f.*.sizeupvalues) {
         (blk: {
             const tmp = oldsize;
@@ -1967,7 +1967,7 @@ pub fn solvegoto(arg_ls: [*c]LexState, arg_g: c_int, arg_label: [*c]Labeldesc) c
     }).*;
     _ = &gt;
     _ = @as(c_int, 0);
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@as(c_int, @bitCast(@as(c_uint, gt.*.nactvar))) < @as(c_int, @bitCast(@as(c_uint, label.*.nactvar)))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(@as(c_int, @bitCast(@as(c_uint, gt.*.nactvar))) < @as(c_int, @bitCast(@as(c_uint, label.*.nactvar)))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         jumpscopeerror(ls, gt);
     }
     luaK_patchlist(ls.*.fs, gt.*.pc, label.*.pc);
@@ -2021,7 +2021,7 @@ pub fn newlabelentry(arg_ls: [*c]LexState, arg_l: [*c]Labellist, arg_name: [*c]T
     var n: c_int = l.*.n;
     _ = &n;
     _ = blk: {
-        const tmp = @as([*c]Labeldesc, @ptrCast(@alignCast(luaM_growaux_(ls.*.L, @as(?*anyopaque, @ptrCast(l.*.arr)), n, &l.*.size, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(Labeldesc))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(c_long, @as(c_int, 32767)))) <= (~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(Labeldesc))) @as(c_uint, @bitCast(@as(c_int, 32767))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf(Labeldesc))))))), "labels/gotos"))));
+        const tmp = @as([*c]Labeldesc, @ptrCast(@alignCast(luaM_growaux_(ls.*.L, @as(?*anyopaque, @ptrCast(l.*.arr)), n, &l.*.size, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf(Labeldesc))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(isize, @as(c_int, 32767)))) <= (~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(Labeldesc))) @as(c_uint, @bitCast(@as(c_int, 32767))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf(Labeldesc))))))), "labels/gotos"))));
         l.*.arr = tmp;
         break :blk tmp;
     };
@@ -2165,7 +2165,7 @@ pub fn undefgoto(arg_ls: [*c]LexState, arg_gt: [*c]Labeldesc) callconv(.c) noret
     var msg: [*c]const u8 = undefined;
     _ = &msg;
     var fmtbuf: [512]u8 = undefined;
-    if (gt.*.name == luaS_newlstr(ls.*.L, "break", (@sizeOf([6]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))))) {
+    if (gt.*.name == luaS_newlstr(ls.*.L, "break", (@sizeOf([6]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))))) {
         msg = blk: {
             const m = std.fmt.bufPrintZ(&fmtbuf, "break outside loop at line {d}", .{gt.*.line}) catch "break outside loop at line ?";
             break :blk lua_pushstring(ls.*.L, m);
@@ -2195,7 +2195,7 @@ pub fn leaveblock(arg_fs: [*c]FuncState) callconv(.c) void {
     removevars(fs, @as(c_int, @bitCast(@as(c_uint, bl.*.nactvar))));
     _ = @as(c_int, 0);
     if (bl.*.isloop != 0) {
-        hasclose = createlabel(ls, luaS_newlstr(ls.*.L, "break", (@sizeOf([6]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))), @as(c_int, 0), @as(c_int, 0));
+        hasclose = createlabel(ls, luaS_newlstr(ls.*.L, "break", (@sizeOf([6]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))), @as(c_int, 0), @as(c_int, 0));
     }
     if ((!(hasclose != 0) and (bl.*.previous != null)) and (@as(c_int, @bitCast(@as(c_uint, bl.*.upval))) != 0)) {
         _ = luaK_codeABCk(fs, @as(c_uint, @bitCast(OP_CLOSE)), stklevel, @as(c_int, 0), @as(c_int, 0), @as(c_int, 0));
@@ -2229,7 +2229,7 @@ pub fn addprototype(arg_ls: [*c]LexState) callconv(.c) [*c]Proto {
         var oldsize: c_int = f.*.sizep;
         _ = &oldsize;
         _ = blk: {
-            const tmp = @as([*c][*c]Proto, @ptrCast(@alignCast(luaM_growaux_(L, @as(?*anyopaque, @ptrCast(f.*.p)), fs.*.np, &f.*.sizep, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([*c]Proto))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(c_long, (@as(c_int, 1) << @intCast((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1))) - @as(c_int, 1)))) <= (~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf([*c]Proto))) @as(c_uint, @bitCast((@as(c_int, 1) << @intCast((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1))) - @as(c_int, 1))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(c_long, @as(c_int, 0)))) / @sizeOf([*c]Proto))))))), "functions"))));
+            const tmp = @as([*c][*c]Proto, @ptrCast(@alignCast(luaM_growaux_(L, @as(?*anyopaque, @ptrCast(f.*.p)), fs.*.np, &f.*.sizep, @as(c_int, @bitCast(@as(c_uint, @truncate(@sizeOf([*c]Proto))))), @as(c_int, @bitCast(if (@as(usize, @bitCast(@as(isize, (@as(c_int, 1) << @intCast((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1))) - @as(c_int, 1)))) <= (~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf([*c]Proto))) @as(c_uint, @bitCast((@as(c_int, 1) << @intCast((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1))) - @as(c_int, 1))) else @as(c_uint, @bitCast(@as(c_uint, @truncate(~@as(usize, @bitCast(@as(isize, @as(c_int, 0)))) / @sizeOf([*c]Proto))))))), "functions"))));
             f.*.p = tmp;
             break :blk tmp;
         };
@@ -2365,7 +2365,7 @@ pub fn close_func(arg_ls: [*c]LexState) callconv(.c) void {
     };
     ls.*.fs = fs.*.prev;
     {
-        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        if (L.*.l_G.*.GCdebt > @as(l_mem, @bitCast(@as(isize, @as(c_int, 0))))) {
             _ = @as(c_int, 0);
             luaC_step(L);
             _ = @as(c_int, 0);
@@ -2643,7 +2643,7 @@ pub fn body(arg_ls: [*c]LexState, arg_e: [*c]expdesc, arg_ismethod: c_int, arg_l
     open_func(ls, &new_fs, &bl);
     checknext(ls, @as(c_int, '('));
     if (ismethod != 0) {
-        _ = new_localvar(ls, luaX_newstring(ls, "self", (@sizeOf([5]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))));
+        _ = new_localvar(ls, luaX_newstring(ls, "self", (@sizeOf([5]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))));
         adjustlocalvars(ls, @as(c_int, 1));
     }
     parlist(ls);
@@ -3229,7 +3229,7 @@ pub fn breakstat(arg_ls: [*c]LexState) callconv(.c) void {
     var line: c_int = ls.*.linenumber;
     _ = &line;
     luaX_next(ls);
-    _ = newgotoentry(ls, luaS_newlstr(ls.*.L, "break", (@sizeOf([6]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))), line, luaK_jump(ls.*.fs));
+    _ = newgotoentry(ls, luaS_newlstr(ls.*.L, "break", (@sizeOf([6]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))), line, luaK_jump(ls.*.fs));
 }
 pub fn checkrepeated(arg_ls: [*c]LexState, arg_name: [*c]TString) callconv(.c) void {
     var ls = arg_ls;
@@ -3238,7 +3238,7 @@ pub fn checkrepeated(arg_ls: [*c]LexState, arg_name: [*c]TString) callconv(.c) v
     _ = &name;
     var lb: [*c]Labeldesc = findlabel(ls, name);
     _ = &lb;
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(lb != @as([*c]Labeldesc, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(lb != @as([*c]Labeldesc, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         var fmtbuf: [512]u8 = undefined;
         var msg: [*c]const u8 = undefined;
         _ = &msg;
@@ -3351,7 +3351,7 @@ pub fn fixforjump(arg_fs: [*c]FuncState, arg_pc: c_int, arg_dest: c_int, arg_bac
     if (back != 0) {
         offset = -offset;
     }
-    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(offset > ((@as(c_int, 1) << @intCast((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1))) - @as(c_int, 1))) != @as(c_int, 0))), @as(c_long, @bitCast(@as(c_long, @as(c_int, 0))))) != 0) {
+    if (__builtin_expect(@as(c_long, @intFromBool(@intFromBool(offset > ((@as(c_int, 1) << @intCast((@as(c_int, 8) + @as(c_int, 8)) + @as(c_int, 1))) - @as(c_int, 1))) != @as(c_int, 0))), @as(c_long, @as(c_int, 0))) != 0) {
         luaX_syntaxerror(fs.*.ls, "control structure too long");
     }
     _ = blk: {
@@ -3420,9 +3420,9 @@ pub fn fornum(arg_ls: [*c]LexState, arg_varname: [*c]TString, arg_line: c_int) c
     _ = &fs;
     var base: c_int = @as(c_int, @bitCast(@as(c_uint, fs.*.freereg)));
     _ = &base;
-    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))));
-    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))));
-    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))));
+    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))));
+    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))));
+    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))));
     _ = new_localvar(ls, varname);
     checknext(ls, @as(c_int, '='));
     exp1(ls);
@@ -3452,10 +3452,10 @@ pub fn forlist(arg_ls: [*c]LexState, arg_indexname: [*c]TString) callconv(.c) vo
     _ = &line;
     var base: c_int = @as(c_int, @bitCast(@as(c_uint, fs.*.freereg)));
     _ = &base;
-    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))));
-    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))));
-    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))));
-    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))));
+    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))));
+    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))));
+    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))));
+    _ = new_localvar(ls, luaX_newstring(ls, "(for state)", (@sizeOf([12]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))));
     _ = new_localvar(ls, indexname);
     while (testnext(ls, @as(c_int, ',')) != 0) {
         _ = new_localvar(ls, str_checkname(ls));
@@ -3524,7 +3524,7 @@ pub fn test_then_block(arg_ls: [*c]LexState, arg_escapelist: [*c]c_int) callconv
         luaK_goiffalse(ls.*.fs, &v);
         luaX_next(ls);
         enterblock(fs, &bl, @as(lu_byte, @bitCast(@as(i8, @truncate(@as(c_int, 0))))));
-        _ = newgotoentry(ls, luaS_newlstr(ls.*.L, "break", (@sizeOf([6]u8) / @sizeOf(u8)) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))), line, v.t);
+        _ = newgotoentry(ls, luaS_newlstr(ls.*.L, "break", (@sizeOf([6]u8) / @sizeOf(u8)) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))), line, v.t);
         while (testnext(ls, @as(c_int, ';')) != 0) {}
         if (block_follow(ls, @as(c_int, 0)) != 0) {
             leaveblock(fs);

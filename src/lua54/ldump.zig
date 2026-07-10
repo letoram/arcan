@@ -61,7 +61,7 @@ pub const wchar_t = c_uint;
 pub const char16_t = c_ushort;
 pub const char32_t = c_uint;
 pub const errno_t = c_int;
-pub const ptrdiff_t = c_long;
+pub const ptrdiff_t = isize;
 pub const wint_t = c_uint;
 pub const bool32 = c_int;
 pub const intmax_t = c_long;
@@ -288,17 +288,17 @@ pub extern fn heapsort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaqu
 pub extern fn mergesort(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.c) c_int) c_int;
 pub extern fn mergesort_r(?*anyopaque, usize, usize, ?*const fn (?*const anyopaque, ?*const anyopaque, ?*anyopaque) callconv(.c) c_int, ?*anyopaque) c_int;
 pub extern fn free(?*anyopaque) void;
-pub extern fn malloc(c_ulong) ?*anyopaque;
-pub extern fn calloc(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn memalign(c_ulong, c_ulong) ?*anyopaque;
-pub extern fn realloc(?*anyopaque, c_ulong) ?*anyopaque;
+pub extern fn malloc(usize) ?*anyopaque;
+pub extern fn calloc(usize, usize) ?*anyopaque;
+pub extern fn memalign(usize, usize) ?*anyopaque;
+pub extern fn realloc(?*anyopaque, usize) ?*anyopaque;
 pub extern fn realloc_in_place(?*anyopaque, usize) ?*anyopaque;
 pub extern fn reallocarray(?*anyopaque, usize, usize) ?*anyopaque;
 pub extern fn valloc(usize) ?*anyopaque;
 pub extern fn pvalloc(usize) ?*anyopaque;
 pub extern fn strdup([*c]const u8) [*c]u8;
-pub extern fn strndup([*c]const u8, c_ulong) [*c]u8;
-pub extern fn aligned_alloc(c_ulong, c_ulong) ?*anyopaque;
+pub extern fn strndup([*c]const u8, usize) [*c]u8;
+pub extern fn aligned_alloc(usize, usize) ?*anyopaque;
 pub extern fn posix_memalign([*c]?*anyopaque, usize, usize) c_int;
 pub extern fn mallopt(c_int, c_int) c_int;
 pub extern fn malloc_trim(usize) c_int;
@@ -381,35 +381,35 @@ pub extern fn fcvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn ecvt(f64, c_int, [*c]c_int, [*c]c_int) [*c]u8;
 pub extern fn gcvt(f64, c_int, [*c]u8) [*c]u8;
 pub extern fn at_quick_exit(?*const fn () callconv(.c) void) c_int;
-pub extern fn memset(?*anyopaque, c_int, c_ulong) ?*anyopaque;
-pub extern fn memmove(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
-pub extern fn memcpy(?*anyopaque, ?*const anyopaque, c_ulong) ?*anyopaque;
+pub extern fn memset(?*anyopaque, c_int, usize) ?*anyopaque;
+pub extern fn memmove(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
+pub extern fn memcpy(?*anyopaque, ?*const anyopaque, usize) ?*anyopaque;
 pub extern fn hexpcpy([*c]u8, ?*const anyopaque, usize) [*c]u8;
-pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
+pub extern fn memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn timingsafe_memcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
 pub extern fn strlen([*c]const u8) c_ulong;
 pub extern fn strnlen([*c]const u8, usize) usize;
 pub extern fn strnlen_s([*c]const u8, usize) usize;
 pub extern fn strchr([*c]const u8, c_int) [*c]u8;
-pub extern fn memchr(?*const anyopaque, c_int, c_ulong) ?*anyopaque;
+pub extern fn memchr(?*const anyopaque, c_int, usize) ?*anyopaque;
 pub extern fn rawmemchr(?*const anyopaque, c_int) ?*anyopaque;
 pub extern fn wcslen([*c]const c_uint) c_ulong;
 pub extern fn wcsnlen([*c]const wchar_t, usize) usize;
 pub extern fn wcsnlen_s([*c]const wchar_t, usize) usize;
 pub extern fn wcschr([*c]const c_uint, c_uint) [*c]c_uint;
-pub extern fn wmemchr([*c]const c_uint, c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemchr([*c]const c_uint, c_uint, usize) [*c]c_uint;
 pub extern fn wcschrnul([*c]const wchar_t, wchar_t) [*c]wchar_t;
 pub extern fn strstr([*c]const u8, [*c]const u8) [*c]u8;
 pub extern fn wcsstr([*c]const wchar_t, [*c]const wchar_t) [*c]wchar_t;
 pub extern fn strcmp([*c]const u8, [*c]const u8) c_int;
-pub extern fn strncmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcscmp([*c]const c_uint, [*c]const c_uint) c_int;
-pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
-pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, c_ulong) c_int;
+pub extern fn wcsncmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
+pub extern fn wmemcmp([*c]const c_uint, [*c]const c_uint, usize) c_int;
 pub extern fn strcasecmp([*c]const u8, [*c]const u8) c_int;
 pub extern fn wcscasecmp([*c]const wchar_t, [*c]const wchar_t) c_int;
-pub extern fn strncasecmp([*c]const u8, [*c]const u8, c_ulong) c_int;
+pub extern fn strncasecmp([*c]const u8, [*c]const u8, usize) c_int;
 pub extern fn wcsncasecmp([*c]const wchar_t, [*c]const wchar_t, usize) c_int;
 pub extern fn strrchr([*c]const u8, c_int) [*c]u8;
 pub extern fn wcsrchr([*c]const wchar_t, wchar_t) [*c]wchar_t;
@@ -422,21 +422,21 @@ pub extern fn wcscspn([*c]const wchar_t, [*c]const wchar_t) usize;
 pub extern fn memfrob(?*anyopaque, usize) ?*anyopaque;
 pub extern fn strcoll([*c]const u8, [*c]const u8) c_int;
 pub extern fn stpcpy([*c]u8, [*c]const u8) [*c]u8;
-pub extern fn stpncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn stpncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strcat([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscat([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strxfrm([*c]u8, [*c]const u8, c_ulong) c_ulong;
+pub extern fn strxfrm([*c]u8, [*c]const u8, usize) usize;
 pub extern fn strcpy([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn wcscpy([*c]wchar_t, [*c]const wchar_t) [*c]wchar_t;
-pub extern fn strncat([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncat([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn wcsncat([*c]wchar_t, [*c]const wchar_t, usize) [*c]wchar_t;
-pub extern fn strncpy([*c]u8, [*c]const u8, c_ulong) [*c]u8;
+pub extern fn strncpy([*c]u8, [*c]const u8, usize) [*c]u8;
 pub extern fn strtok([*c]u8, [*c]const u8) [*c]u8;
 pub extern fn strtok_r([*c]u8, [*c]const u8, [*c][*c]u8) [*c]u8;
 pub extern fn wcstok([*c]wchar_t, [*c]const wchar_t, [*c][*c]wchar_t) [*c]wchar_t;
 pub extern fn wmemset([*c]wchar_t, wchar_t, usize) [*c]wchar_t;
-pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
-pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, c_ulong) [*c]c_uint;
+pub extern fn wmemcpy([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
+pub extern fn wmemmove([*c]c_uint, [*c]const c_uint, usize) [*c]c_uint;
 pub extern fn strfmon([*c]u8, usize, [*c]const u8, ...) isize;
 pub extern fn a64l([*c]const u8) c_long;
 pub extern fn l64a(c_long) [*c]u8;
@@ -466,9 +466,9 @@ pub extern fn strsignal(c_int) [*c]u8;
 pub extern fn strerror(c_int) [*c]u8;
 pub extern fn strerror_r(c_int, [*c]u8, usize) errno_t;
 pub extern fn __xpg_strerror_r(c_int, [*c]u8, usize) [*c]u8;
-pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, c_ulong) c_int;
-pub extern fn bcopy(?*const anyopaque, ?*anyopaque, c_ulong) void;
-pub extern fn bzero(?*anyopaque, c_ulong) void;
+pub extern fn bcmp(?*const anyopaque, ?*const anyopaque, usize) c_int;
+pub extern fn bcopy(?*const anyopaque, ?*anyopaque, usize) void;
+pub extern fn bzero(?*anyopaque, usize) void;
 pub extern fn index([*c]const u8, c_int) [*c]u8;
 pub extern fn rindex([*c]const u8, c_int) [*c]u8;
 pub extern fn mktemp([*c]u8) [*c]u8;
@@ -740,8 +740,8 @@ pub extern fn fopen([*c]const u8, [*c]const u8) ?*FILE;
 pub extern fn fdopen(c_int, [*c]const u8) ?*FILE;
 pub extern fn fmemopen(?*anyopaque, usize, [*c]const u8) ?*FILE;
 pub extern fn freopen([*c]const u8, [*c]const u8, ?*FILE) ?*FILE;
-pub extern fn fread(?*anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
-pub extern fn fwrite(?*const anyopaque, c_ulong, c_ulong, ?*FILE) c_ulong;
+pub extern fn fread(?*anyopaque, usize, usize, ?*FILE) usize;
+pub extern fn fwrite(?*const anyopaque, usize, usize, ?*FILE) usize;
 pub extern fn fclose(?*FILE) c_int;
 pub extern fn fseek(?*FILE, c_long, c_int) c_int;
 pub extern fn ftell(?*FILE) c_long;
@@ -773,8 +773,8 @@ pub extern fn scanf(noalias [*c]const u8, ...) c_int;
 pub extern fn vscanf(noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fscanf(noalias ?*FILE, noalias [*c]const u8, ...) c_int;
 pub extern fn vfscanf(noalias ?*FILE, noalias [*c]const u8, __builtin_va_list) c_int;
-pub extern fn snprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias [*c]u8, c_ulong, noalias [*c]const u8, __builtin_va_list) c_int;
+pub extern fn snprintf(noalias [*c]u8, usize, noalias [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias [*c]u8, usize, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn sprintf(noalias [*c]u8, noalias [*c]const u8, ...) c_int;
 pub extern fn vsprintf(noalias [*c]u8, noalias [*c]const u8, __builtin_va_list) c_int;
 pub extern fn fwprintf(?*FILE, [*c]const wchar_t, ...) c_int;
@@ -1446,7 +1446,7 @@ pub fn dumpBlock(arg_D: [*c]DumpState, arg_b: ?*const anyopaque, arg_size: usize
     _ = &b;
     var size = arg_size;
     _ = &size;
-    if ((D.*.status == @as(c_int, 0)) and (size > @as(usize, @bitCast(@as(c_long, @as(c_int, 0)))))) {
+    if ((D.*.status == @as(c_int, 0)) and (size > @as(usize, @bitCast(@as(isize, @as(c_int, 0)))))) {
         _ = @as(c_int, 0);
         D.*.status = D.*.writer.?(D.*.L, b, size, D.*.data);
         _ = @as(c_int, 0);
@@ -1459,7 +1459,7 @@ pub fn dumpByte(arg_D: [*c]DumpState, arg_y: c_int) callconv(.c) void {
     _ = &y;
     var x: lu_byte = @as(lu_byte, @bitCast(@as(i8, @truncate(y))));
     _ = &x;
-    dumpBlock(D, @as(?*const anyopaque, @ptrCast(&x)), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))) *% @sizeOf(lu_byte));
+    dumpBlock(D, @as(?*const anyopaque, @ptrCast(&x)), @as(usize, @bitCast(@as(isize, @as(c_int, 1)))) *% @sizeOf(lu_byte));
 }
 pub fn dumpSize(arg_D: [*c]DumpState, arg_x: usize) callconv(.c) void {
     var D = arg_D;
@@ -1471,37 +1471,37 @@ pub fn dumpSize(arg_D: [*c]DumpState, arg_x: usize) callconv(.c) void {
     var n: c_int = 0;
     _ = &n;
     while (true) {
-        buff[(((@sizeOf(usize) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8))))) +% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 6))))) / @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 7))))) -% @as(c_ulong, @bitCast(@as(c_long, blk: {
+        buff[(((@sizeOf(usize) *% @as(usize, @bitCast(@as(isize, @as(c_int, 8))))) +% @as(usize, @bitCast(@as(isize, @as(c_int, 6))))) / @as(usize, @bitCast(@as(isize, @as(c_int, 7))))) -% @as(usize, @bitCast(@as(isize, blk: {
             const ref = &n;
             ref.* += 1;
             break :blk ref.*;
-        })))] = @as(lu_byte, @bitCast(@as(u8, @truncate(x & @as(usize, @bitCast(@as(c_long, @as(c_int, 127))))))));
+        })))] = @as(lu_byte, @bitCast(@as(u8, @truncate(x & @as(usize, @bitCast(@as(isize, @as(c_int, 127))))))));
         x >>= @intCast(@as(c_int, 7));
-        if (!(x != @as(usize, @bitCast(@as(c_long, @as(c_int, 0)))))) break;
+        if (!(x != @as(usize, @bitCast(@as(isize, @as(c_int, 0)))))) break;
     }
-    buff[(((@sizeOf(usize) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8))))) +% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 6))))) / @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 7))))) -% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1))))] |= @as(lu_byte, @bitCast(@as(i8, @truncate(@as(c_int, 128)))));
-    dumpBlock(D, @as(?*const anyopaque, @ptrCast((@as([*c]lu_byte, @ptrCast(@alignCast(&buff[@as(usize, @intCast(0))]))) + (((@sizeOf(usize) *% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 8))))) +% @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 6))))) / @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 7)))))) - @as(usize, @bitCast(@as(isize, @intCast(n)))))), @as(c_ulong, @bitCast(@as(c_long, n))) *% @sizeOf(lu_byte));
+    buff[(((@sizeOf(usize) *% @as(usize, @bitCast(@as(isize, @as(c_int, 8))))) +% @as(usize, @bitCast(@as(isize, @as(c_int, 6))))) / @as(usize, @bitCast(@as(isize, @as(c_int, 7))))) -% @as(usize, @bitCast(@as(isize, @as(c_int, 1))))] |= @as(lu_byte, @bitCast(@as(i8, @truncate(@as(c_int, 128)))));
+    dumpBlock(D, @as(?*const anyopaque, @ptrCast((@as([*c]lu_byte, @ptrCast(@alignCast(&buff[@as(usize, @intCast(0))]))) + (((@sizeOf(usize) *% @as(usize, @bitCast(@as(isize, @as(c_int, 8))))) +% @as(usize, @bitCast(@as(isize, @as(c_int, 6))))) / @as(usize, @bitCast(@as(isize, @as(c_int, 7)))))) - @as(usize, @bitCast(@as(isize, @intCast(n)))))), @as(usize, @bitCast(@as(isize, n))) *% @sizeOf(lu_byte));
 }
 pub fn dumpInt(arg_D: [*c]DumpState, arg_x: c_int) callconv(.c) void {
     var D = arg_D;
     _ = &D;
     var x = arg_x;
     _ = &x;
-    dumpSize(D, @as(usize, @bitCast(@as(c_long, x))));
+    dumpSize(D, @as(usize, @bitCast(@as(isize, x))));
 }
 pub fn dumpNumber(arg_D: [*c]DumpState, arg_x: lua_Number) callconv(.c) void {
     var D = arg_D;
     _ = &D;
     var x = arg_x;
     _ = &x;
-    dumpBlock(D, @as(?*const anyopaque, @ptrCast(&x)), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))) *% @sizeOf(lua_Number));
+    dumpBlock(D, @as(?*const anyopaque, @ptrCast(&x)), @as(usize, @bitCast(@as(isize, @as(c_int, 1)))) *% @sizeOf(lua_Number));
 }
 pub fn dumpInteger(arg_D: [*c]DumpState, arg_x: lua_Integer) callconv(.c) void {
     var D = arg_D;
     _ = &D;
     var x = arg_x;
     _ = &x;
-    dumpBlock(D, @as(?*const anyopaque, @ptrCast(&x)), @as(c_ulong, @bitCast(@as(c_long, @as(c_int, 1)))) *% @sizeOf(lua_Integer));
+    dumpBlock(D, @as(?*const anyopaque, @ptrCast(&x)), @as(usize, @bitCast(@as(isize, @as(c_int, 1)))) *% @sizeOf(lua_Integer));
 }
 pub fn dumpString(arg_D: [*c]DumpState, arg_s: [*c]const TString) callconv(.c) void {
     var D = arg_D;
@@ -1509,13 +1509,13 @@ pub fn dumpString(arg_D: [*c]DumpState, arg_s: [*c]const TString) callconv(.c) v
     var s = arg_s;
     _ = &s;
     if (s == @as([*c]const TString, @ptrCast(@alignCast(@as(?*anyopaque, @ptrFromInt(@as(c_int, 0))))))) {
-        dumpSize(D, @as(usize, @bitCast(@as(c_long, @as(c_int, 0)))));
+        dumpSize(D, @as(usize, @bitCast(@as(isize, @as(c_int, 0)))));
     } else {
-        var size: usize = if (@as(c_int, @bitCast(@as(c_uint, s.*.tt))) == (@as(c_int, 4) | (@as(c_int, 0) << @intCast(4)))) @as(usize, @bitCast(@as(c_ulong, s.*.shrlen))) else s.*.u.lnglen;
+        var size: usize = if (@as(c_int, @bitCast(@as(c_uint, s.*.tt))) == (@as(c_int, 4) | (@as(c_int, 0) << @intCast(4)))) @as(usize, @bitCast(@as(usize, s.*.shrlen))) else s.*.u.lnglen;
         _ = &size;
         var str: [*c]const u8 = @as([*c]const u8, @ptrCast(@alignCast(&s.*.contents[@as(usize, @intCast(0))])));
         _ = &str;
-        dumpSize(D, size +% @as(usize, @bitCast(@as(c_long, @as(c_int, 1)))));
+        dumpSize(D, size +% @as(usize, @bitCast(@as(isize, @as(c_int, 1)))));
         dumpBlock(D, @as(?*const anyopaque, @ptrCast(str)), size *% @sizeOf(u8));
     }
 }
@@ -1525,7 +1525,7 @@ pub fn dumpCode(arg_D: [*c]DumpState, arg_f: [*c]const Proto) callconv(.c) void 
     var f = arg_f;
     _ = &f;
     dumpInt(D, f.*.sizecode);
-    dumpBlock(D, @as(?*const anyopaque, @ptrCast(f.*.code)), @as(c_ulong, @bitCast(@as(c_long, f.*.sizecode))) *% @sizeOf(Instruction));
+    dumpBlock(D, @as(?*const anyopaque, @ptrCast(f.*.code)), @as(usize, @bitCast(@as(isize, f.*.sizecode))) *% @sizeOf(Instruction));
 }
 pub fn dumpFunction(arg_D: [*c]DumpState, arg_f: [*c]const Proto, arg_psource: [*c]TString) callconv(.c) void {
     var D = arg_D;
@@ -1665,7 +1665,7 @@ pub fn dumpDebug(arg_D: [*c]DumpState, arg_f: [*c]const Proto) callconv(.c) void
     _ = &n;
     n = if (D.*.strip != 0) @as(c_int, 0) else f.*.sizelineinfo;
     dumpInt(D, n);
-    dumpBlock(D, @as(?*const anyopaque, @ptrCast(f.*.lineinfo)), @as(c_ulong, @bitCast(@as(c_long, n))) *% @sizeOf(ls_byte));
+    dumpBlock(D, @as(?*const anyopaque, @ptrCast(f.*.lineinfo)), @as(usize, @bitCast(@as(isize, n))) *% @sizeOf(ls_byte));
     n = if (D.*.strip != 0) @as(c_int, 0) else f.*.sizeabslineinfo;
     dumpInt(D, n);
     {

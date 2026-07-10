@@ -362,7 +362,10 @@ pub fn build(b: *std.Build) void {
         .abi = .musl,
     } });
     use_llvm_default = switch (target.result.os.tag) {
-        .ios, .macos, .watchos, .tvos => true,
+        // darwin: SH Mach-O relocations overflow. windows: SH has no Win64
+        // codegen for several constructs (var-args, some atomics) — LLVM is
+        // the only working backend for the x86_64-windows target.
+        .ios, .macos, .watchos, .tvos, .windows => true,
         else => false,
     };
     // Bug 0162: setting `preferred_optimize_mode = .Debug` here disables
@@ -426,8 +429,8 @@ pub fn build(b: *std.Build) void {
     };
 
     switch (opts.target.result.os.tag) {
-        .linux, .ios, .macos, .watchos, .tvos, .freebsd, .dragonfly, .openbsd, .netbsd => {},
-        else => |t| std.debug.panic("Unsupported platform: {s} — arcan targets Linux/BSD/macOS", .{@tagName(t)}),
+        .linux, .ios, .macos, .watchos, .tvos, .freebsd, .dragonfly, .openbsd, .netbsd, .windows => {},
+        else => |t| std.debug.panic("Unsupported platform: {s} — arcan targets Linux/BSD/macOS/Windows", .{@tagName(t)}),
     }
 
     // PIC: only forced when caller passes -Dpic=true. qtarcan (now in
@@ -1300,8 +1303,11 @@ pub fn build(b: *std.Build) void {
         break :blk install_wrapper;
     } else null;
 
-    // Compositor-side targets (arcan VK, frameservers, data dirs).
-    {
+    // Compositor-side targets (arcan VK, frameservers, data dirs). Gated on
+    // build_arcan_vk so `-Dbuild_arcan_vk=false` yields just the core libs
+    // (shmif/shmif_server/tui/a12) — useful for bring-up on a new platform
+    // before the compositor/frameserver substrate is ready.
+    if (opts.build_arcan_vk) {
         const arcan_fs = createArcanFrameserver(b, opts);
         const install_fs = b.addInstallArtifact(arcan_fs, .{});
         const afsrv_term = createAfsrvTerminal(b, opts, arcan_shmif, arcan_shmif_server, arcan_tui);
@@ -3086,10 +3092,16 @@ fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile
     const vk_metal_mod = createMod(b, "src/platform/agp/macos/vk_metal.zig", opts);
     vk_metal_mod.addImport("vulkan", vk.vulkan_mod);
 
-    // macOS: the Cocoa/CAMetalLayer window implementation (exports the
-    // soma_window_* surface that vk_metal.zig externs). Resolves libobjc and
-    // the AppKit/QuartzCore/Metal frameworks via dlopen at runtime, so the
-    // cross-link from Linux needs nothing beyond zig's libSystem stubs.
+    // Win32 WSI module (windows only; comptime-dead elsewhere but the import
+    // name must still resolve).
+    const vk_win32_mod = createMod(b, "src/platform/agp/win32/vk_win32.zig", opts);
+    vk_win32_mod.addImport("vulkan", vk.vulkan_mod);
+
+    // Native window implementation per target: macOS Cocoa/CAMetalLayer or
+    // Windows Win32/HWND. Each exports the soma_window_* surface the WSI
+    // module externs, and resolves its OS libraries (AppKit/Metal, or
+    // user32/gdi32) via dlopen at runtime — the cross-link from Linux needs
+    // nothing beyond the target's base libSystem/kernel32.
     switch (opts.target.result.os.tag) {
         .ios, .macos, .watchos, .tvos => {
             const cocoa_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "cocoa_window", .root_module = b.createModule(.{
@@ -3098,6 +3110,14 @@ fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile
             }) });
             addLibC(cocoa_obj, opts);
             exe.addObject(cocoa_obj);
+        },
+        .windows => {
+            const win32_obj = b.addObject(.{ .use_llvm = use_llvm_default, .name = "win32_window", .root_module = b.createModule(.{
+                .root_source_file = b.path("src/platform/agp/win32/win32_window.zig"),
+                .target = opts.target, .optimize = opts.optimize,
+            }) });
+            addLibC(win32_obj, opts);
+            exe.addObject(win32_obj);
         },
         else => {},
     }
@@ -3114,6 +3134,7 @@ fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile
     video_obj.root_module.addImport("vk_offscreen.zig", vk_offscreen_mod);
     video_obj.root_module.addImport("vk_gbm_kms.zig", vk_gbm_kms_mod);
     video_obj.root_module.addImport("vk_metal.zig", vk_metal_mod);
+    video_obj.root_module.addImport("vk_win32.zig", vk_win32_mod);
     video_obj.root_module.addImport("posix", cm_video.posix_libc);
     video_obj.root_module.addImport("shmif_types", cm_video.shmif_types);
     video_obj.root_module.addImport("a12_types", cm_video.a12_types);
@@ -3374,10 +3395,19 @@ fn addShmifPlatformSources(b: *std.Build, lib: *std.Build.Step.Compile, opts: Op
     // shmif_libc_helpers.c removed — functionality ported to Zig
     for ([_]String{ "src/platform/posix/shmemop.zig", "src/platform/posix/fdscan.zig", "src/platform/posix/random.zig" }) |zig_src|
         addShmifZigSource(b, lib, zig_src, opts);
-    // warning.zig uses @cVaStart (native-only); PIC builds (qtarcan shared
-    // lib) previously fell back to a C TU, which left with the C tree —
-    // those live in build_llvm/ where an LLVM-enabled zig compiles this fine.
-    addShmifZigSourceNoLlvm(b, lib, "src/platform/posix/warning.zig", opts);
+    // warning.zig's arcan_warning/arcan_fatal are variadic. The aarch64 SH
+    // backend can emit @cVaStart bodies, so on linux/bsd/macOS warning.zig
+    // is compiled with the SH backend and defines them in pure Zig. On
+    // x86_64-windows neither backend can (LLVM disables it, SH has no Win64
+    // var-arg codegen) — there warning.zig compiles under LLVM with
+    // va_in_zig=false (so it does NOT emit the bodies) and warning_va.c
+    // supplies them, compiled by the bundled clang.
+    if (opts.target.result.os.tag == .windows) {
+        addShmifZigSource(b, lib, "src/platform/posix/warning.zig", opts); // LLVM (use_llvm_default)
+        addCSources(lib, b, &.{"src/platform/posix/warning_va.c"});
+    } else {
+        addShmifZigSourceNoLlvm(b, lib, "src/platform/posix/warning.zig", opts);
+    }
     addShmifZigSource(b, lib, "src/platform/posix/fdpassing_nonblock.zig", opts);
     switch (opts.target.result.os.tag) {
         .linux, .freebsd, .openbsd, .dragonfly, .netbsd => {
@@ -3388,6 +3418,12 @@ fn addShmifPlatformSources(b: *std.Build, lib: *std.Build.Step.Compile, opts: Op
             // Darwin needs the mach clock + named-semaphore shims (pure Zig
             // ports of the old darwin/{time,sem}.c).
             for ([_]String{ "src/platform/darwin/time.zig", "src/platform/darwin/sem.zig" }) |zig_src|
+                addShmifZigSource(b, lib, zig_src, opts);
+        },
+        .windows => {
+            // Win32 substrate: clock (QueryPerformanceCounter), semaphores
+            // (CreateSemaphore), and the broader posix shim layer.
+            for ([_]String{ "src/platform/windows/time.zig", "src/platform/windows/sem.zig" }) |zig_src|
                 addShmifZigSource(b, lib, zig_src, opts);
         },
         else => {},

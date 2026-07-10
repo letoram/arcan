@@ -423,7 +423,7 @@ pub fn ma_convert_device_name_to_hw_format__alsa(arg_pContext: [*c]ma_context, a
     dev = ma_find_char(src, @as(u8, @bitCast(@as(i8, @truncate(',')))), &commaPos);
     if (dev == null) {
         dev = "0";
-        _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&card[0]))), @sizeOf([256]u8), src + 6, @as(usize, @bitCast(@as(c_long, -1))));
+        _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&card[0]))), @sizeOf([256]u8), src + 6, @as(usize, @bitCast(@as(isize, -1))));
     } else {
         dev = dev + 5;
         _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&card[0]))), @sizeOf([256]u8), src + 6, @as(usize, @intCast(commaPos - 6)));
@@ -601,7 +601,7 @@ pub fn ma_context_enumerate_devices__alsa(arg_pContext: [*c]ma_context, arg_call
 
         if (NAME != null) {
             if (arg_pContext.*.unnamed_0.alsa.useVerboseDeviceEnumeration != 0) {
-                _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&hwid[0]))), @sizeOf([256]u8), NAME, @as(usize, @bitCast(@as(c_long, -@as(c_int, 1)))));
+                _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&hwid[0]))), @sizeOf([256]u8), NAME, @as(usize, @bitCast(@as(isize, -@as(c_int, 1)))));
             } else {
                 if (ma_convert_device_name_to_hw_format__alsa(arg_pContext, @as([*c]u8, @ptrCast(@alignCast(&hwid[0]))), @sizeOf([256]u8), NAME) == @as(c_int, 0)) {
                     var dst: [*c]u8 = @as([*c]u8, @ptrCast(@alignCast(&hwid[0])));
@@ -613,7 +613,7 @@ pub fn ma_context_enumerate_devices__alsa(arg_pContext: [*c]ma_context, arg_call
                         src += 1;
                     }
                 } else {
-                    _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&hwid[0]))), @sizeOf([256]u8), NAME, @as(usize, @bitCast(@as(c_long, -@as(c_int, 1)))));
+                    _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&hwid[0]))), @sizeOf([256]u8), NAME, @as(usize, @bitCast(@as(isize, -@as(c_int, 1)))));
                 }
 
                 if (ma_does_id_exist_in_list__alsa(pUniqueIDs, uniqueIDCount, @as([*c]u8, @ptrCast(@alignCast(&hwid[0])))) != 0) {
@@ -639,7 +639,7 @@ pub fn ma_context_enumerate_devices__alsa(arg_pContext: [*c]ma_context, arg_call
         }
 
         @memset(@as([*]u8, @ptrCast(@alignCast(&deviceInfo)))[0..@sizeOf(ma_device_info)], 0);
-        _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.id.alsa[0]))), ma_device_id_alsa_size, @as([*c]u8, @ptrCast(@alignCast(&hwid[0]))), @as(usize, @bitCast(@as(c_long, -@as(c_int, 1)))));
+        _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.id.alsa[0]))), ma_device_id_alsa_size, @as([*c]u8, @ptrCast(@alignCast(&hwid[0]))), @as(usize, @bitCast(@as(isize, -@as(c_int, 1)))));
 
         if (ma_strcmp(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.id.alsa[0]))), "default") == @as(c_int, 0)) {
             deviceInfo.isDefault = 1;
@@ -652,15 +652,15 @@ pub fn ma_context_enumerate_devices__alsa(arg_pContext: [*c]ma_context, arg_call
                 line2 += 1;
 
                 if (arg_pContext.*.unnamed_0.alsa.useVerboseDeviceEnumeration != 0) {
-                    _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.name[0]))), ma_device_info_name_size, DESC, @as(usize, @bitCast(@as(c_long, lfPos))));
+                    _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.name[0]))), ma_device_info_name_size, DESC, @as(usize, @bitCast(@as(isize, lfPos))));
                     _ = ma_strcat_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.name[0]))), ma_device_info_name_size, " (");
                     _ = ma_strcat_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.name[0]))), ma_device_info_name_size, line2);
                     _ = ma_strcat_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.name[0]))), ma_device_info_name_size, ")");
                 } else {
-                    _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.name[0]))), ma_device_info_name_size, DESC, @as(usize, @bitCast(@as(c_long, lfPos))));
+                    _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.name[0]))), ma_device_info_name_size, DESC, @as(usize, @bitCast(@as(isize, lfPos))));
                 }
             } else {
-                _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.name[0]))), ma_device_info_name_size, DESC, @as(usize, @bitCast(@as(c_long, -@as(c_int, 1)))));
+                _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&deviceInfo.name[0]))), ma_device_info_name_size, DESC, @as(usize, @bitCast(@as(isize, -@as(c_int, 1)))));
             }
         }
 
@@ -711,11 +711,11 @@ pub fn ma_context_get_device_info_enum_callback__alsa(arg_pContext: ?*anyopaque,
     std.debug.assert(pData != null);
 
     if ((pData.*.pDeviceID == null) and (ma_strcmp(@as([*c]const u8, @ptrCast(@alignCast(&arg_pDeviceInfo.*.id.alsa[0]))), "default") == @as(c_int, 0))) {
-        _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&pData.*.pDeviceInfo.*.name[0]))), ma_device_info_name_size, @as([*c]const u8, @ptrCast(@alignCast(&arg_pDeviceInfo.*.name[0]))), @as(usize, @bitCast(@as(c_long, -@as(c_int, 1)))));
+        _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&pData.*.pDeviceInfo.*.name[0]))), ma_device_info_name_size, @as([*c]const u8, @ptrCast(@alignCast(&arg_pDeviceInfo.*.name[0]))), @as(usize, @bitCast(@as(isize, -@as(c_int, 1)))));
         pData.*.foundDevice = 1;
     } else {
         if ((pData.*.deviceType == arg_deviceType) and ((pData.*.pDeviceID != null) and (ma_strcmp(@as([*c]const u8, @ptrCast(@alignCast(&pData.*.pDeviceID.*.alsa[0]))), @as([*c]const u8, @ptrCast(@alignCast(&arg_pDeviceInfo.*.id.alsa[0])))) == @as(c_int, 0)))) {
-            _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&pData.*.pDeviceInfo.*.name[0]))), ma_device_info_name_size, @as([*c]const u8, @ptrCast(@alignCast(&arg_pDeviceInfo.*.name[0]))), @as(usize, @bitCast(@as(c_long, -@as(c_int, 1)))));
+            _ = ma_strncpy_s(@as([*c]u8, @ptrCast(@alignCast(&pData.*.pDeviceInfo.*.name[0]))), ma_device_info_name_size, @as([*c]const u8, @ptrCast(@alignCast(&arg_pDeviceInfo.*.name[0]))), @as(usize, @bitCast(@as(isize, -@as(c_int, 1)))));
             pData.*.foundDevice = 1;
         }
     }
@@ -728,7 +728,7 @@ pub fn ma_context_test_rate_and_add_native_data_format__alsa(arg_pContext: [*c]m
     std.debug.assert(arg_pHWParams != null);
     std.debug.assert(arg_pDeviceInfo != null);
 
-    if ((@as(c_ulong, @bitCast(@as(c_ulong, arg_pDeviceInfo.*.nativeDataFormatCount))) < (@sizeOf([64]struct_unnamed_65) / @sizeOf(struct_unnamed_65))) and (@as(ma_snd_pcm_hw_params_test_rate_proc, @ptrCast(@alignCast(arg_pContext.*.unnamed_0.alsa.snd_pcm_hw_params_test_rate))).?(arg_pPCM, arg_pHWParams, arg_sampleRate, @as(c_int, 0)) == @as(c_int, 0))) {
+    if ((@as(usize, @bitCast(@as(usize, arg_pDeviceInfo.*.nativeDataFormatCount))) < (@sizeOf([64]struct_unnamed_65) / @sizeOf(struct_unnamed_65))) and (@as(ma_snd_pcm_hw_params_test_rate_proc, @ptrCast(@alignCast(arg_pContext.*.unnamed_0.alsa.snd_pcm_hw_params_test_rate))).?(arg_pPCM, arg_pHWParams, arg_sampleRate, @as(c_int, 0)) == @as(c_int, 0))) {
         arg_pDeviceInfo.*.nativeDataFormats[arg_pDeviceInfo.*.nativeDataFormatCount].format = arg_format;
         arg_pDeviceInfo.*.nativeDataFormats[arg_pDeviceInfo.*.nativeDataFormatCount].channels = arg_channels;
         arg_pDeviceInfo.*.nativeDataFormats[arg_pDeviceInfo.*.nativeDataFormatCount].sampleRate = arg_sampleRate;
@@ -749,7 +749,7 @@ pub fn ma_context_iterate_rates_and_add_native_data_format__alsa(arg_pContext: [
     minSampleRate = if (@as(c_uint, @bitCast(ma_standard_sample_rate_min)) > (if (minSampleRate < @as(c_uint, @bitCast(ma_standard_sample_rate_max))) minSampleRate else @as(c_uint, @bitCast(ma_standard_sample_rate_max)))) @as(c_uint, @bitCast(ma_standard_sample_rate_min)) else if (minSampleRate < @as(c_uint, @bitCast(ma_standard_sample_rate_max))) minSampleRate else @as(c_uint, @bitCast(ma_standard_sample_rate_max));
     maxSampleRate = if (@as(c_uint, @bitCast(ma_standard_sample_rate_min)) > (if (maxSampleRate < @as(c_uint, @bitCast(ma_standard_sample_rate_max))) maxSampleRate else @as(c_uint, @bitCast(ma_standard_sample_rate_max)))) @as(c_uint, @bitCast(ma_standard_sample_rate_min)) else if (maxSampleRate < @as(c_uint, @bitCast(ma_standard_sample_rate_max))) maxSampleRate else @as(c_uint, @bitCast(ma_standard_sample_rate_max));
 
-    while (@as(c_ulong, @bitCast(@as(c_ulong, iSampleRate))) < (@sizeOf([14]ma_uint32) / @sizeOf(ma_uint32))) : (iSampleRate +%= @as(ma_uint32, @bitCast(@as(c_int, 1)))) {
+    while (@as(usize, @bitCast(@as(usize, iSampleRate))) < (@sizeOf([14]ma_uint32) / @sizeOf(ma_uint32))) : (iSampleRate +%= @as(ma_uint32, @bitCast(@as(c_int, 1)))) {
         const standardSampleRate: ma_uint32 = g_maStandardSampleRatePriorities[iSampleRate];
 
         if ((standardSampleRate >= minSampleRate) and (standardSampleRate <= maxSampleRate)) {
@@ -814,7 +814,7 @@ pub fn ma_context_get_device_info__alsa(arg_pContext: [*c]ma_context, arg_device
         return ma_result_from_errno(-resultALSA);
     }
 
-    while (@as(c_ulong, @bitCast(@as(c_ulong, iFormat))) < (@sizeOf([5]ma_format) / @sizeOf(ma_format))) : (iFormat +%= @as(ma_uint32, @bitCast(@as(c_int, 1)))) {
+    while (@as(usize, @bitCast(@as(usize, iFormat))) < (@sizeOf([5]ma_format) / @sizeOf(ma_format))) : (iFormat +%= @as(ma_uint32, @bitCast(@as(c_int, 1)))) {
         const format: ma_format = g_maFormatPriorities[iFormat];
 
         _ = @as(ma_snd_pcm_hw_params_any_proc, @ptrCast(@alignCast(arg_pContext.*.unnamed_0.alsa.snd_pcm_hw_params_any))).?(pPCM, pHWParams);
@@ -1046,7 +1046,7 @@ pub fn ma_device_init_by_type__alsa(arg_pDevice: [*c]ma_device, arg_pConfig: [*c
         internalPeriods = periods;
     }
     {
-        var actualBufferSizeInFrames: ma_snd_pcm_uframes_t = @as(ma_snd_pcm_uframes_t, @bitCast(@as(c_ulong, ma_calculate_buffer_size_in_frames_from_descriptor(pDescriptor, internalSampleRate, pConfig.*.performanceProfile) *% internalPeriods)));
+        var actualBufferSizeInFrames: ma_snd_pcm_uframes_t = @as(ma_snd_pcm_uframes_t, @bitCast(@as(usize, ma_calculate_buffer_size_in_frames_from_descriptor(pDescriptor, internalSampleRate, pConfig.*.performanceProfile) *% internalPeriods)));
         _ = &actualBufferSizeInFrames;
         resultALSA = @as(ma_snd_pcm_hw_params_set_buffer_size_near_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_hw_params_set_buffer_size_near))).?(pPCM, pHWParams, &actualBufferSizeInFrames);
         if (resultALSA < @as(c_int, 0)) {
@@ -1055,7 +1055,7 @@ pub fn ma_device_init_by_type__alsa(arg_pDevice: [*c]ma_device, arg_pConfig: [*c
             _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_ERROR)), "[ALSA] Failed to set buffer size for device. snd_pcm_hw_params_set_buffer_size() failed.");
             return ma_result_from_errno(-resultALSA);
         }
-        internalPeriodSizeInFrames = @as(ma_uint32, @bitCast(@as(c_uint, @truncate(actualBufferSizeInFrames / @as(ma_snd_pcm_uframes_t, @bitCast(@as(c_ulong, internalPeriods)))))));
+        internalPeriodSizeInFrames = @as(ma_uint32, @bitCast(@as(c_uint, @truncate(actualBufferSizeInFrames / @as(ma_snd_pcm_uframes_t, @bitCast(@as(usize, internalPeriods)))))));
     }
     resultALSA = @as(ma_snd_pcm_hw_params_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_hw_params))).?(pPCM, pHWParams);
     if (resultALSA < @as(c_int, 0)) {
@@ -1079,7 +1079,7 @@ pub fn ma_device_init_by_type__alsa(arg_pDevice: [*c]ma_device, arg_pConfig: [*c
         _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_ERROR)), "[ALSA] Failed to initialize software parameters. snd_pcm_sw_params_current() failed.");
         return ma_result_from_errno(-resultALSA);
     }
-    resultALSA = @as(ma_snd_pcm_sw_params_set_avail_min_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_sw_params_set_avail_min))).?(pPCM, pSWParams, @as(ma_snd_pcm_uframes_t, @bitCast(@as(c_ulong, ma_prev_power_of_2(internalPeriodSizeInFrames)))));
+    resultALSA = @as(ma_snd_pcm_sw_params_set_avail_min_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_sw_params_set_avail_min))).?(pPCM, pSWParams, @as(ma_snd_pcm_uframes_t, @bitCast(@as(usize, ma_prev_power_of_2(internalPeriodSizeInFrames)))));
     if (resultALSA < @as(c_int, 0)) {
         ma_free(@as(?*anyopaque, @ptrCast(pSWParams)), &pDevice.*.pContext.*.allocationCallbacks);
         _ = @as(ma_snd_pcm_close_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_close))).?(pPCM);
@@ -1088,10 +1088,10 @@ pub fn ma_device_init_by_type__alsa(arg_pDevice: [*c]ma_device, arg_pConfig: [*c
     }
     resultALSA = @as(ma_snd_pcm_sw_params_get_boundary_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_sw_params_get_boundary))).?(pSWParams, &bufferBoundary);
     if (resultALSA < @as(c_int, 0)) {
-        bufferBoundary = @as(ma_snd_pcm_uframes_t, @bitCast(@as(c_ulong, internalPeriodSizeInFrames *% internalPeriods)));
+        bufferBoundary = @as(ma_snd_pcm_uframes_t, @bitCast(@as(usize, internalPeriodSizeInFrames *% internalPeriods)));
     }
     if ((deviceType == @as(c_uint, @bitCast(ma_device_type_playback))) and !(isUsingMMap != 0)) {
-        resultALSA = @as(ma_snd_pcm_sw_params_set_start_threshold_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_sw_params_set_start_threshold))).?(pPCM, pSWParams, @as(ma_snd_pcm_uframes_t, @bitCast(@as(c_ulong, internalPeriodSizeInFrames *% @as(ma_uint32, @bitCast(@as(c_int, 2)))))));
+        resultALSA = @as(ma_snd_pcm_sw_params_set_start_threshold_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_sw_params_set_start_threshold))).?(pPCM, pSWParams, @as(ma_snd_pcm_uframes_t, @bitCast(@as(usize, internalPeriodSizeInFrames *% @as(ma_uint32, @bitCast(@as(c_int, 2)))))));
         if (resultALSA < @as(c_int, 0)) {
             ma_free(@as(?*anyopaque, @ptrCast(pSWParams)), &pDevice.*.pContext.*.allocationCallbacks);
             _ = @as(ma_snd_pcm_close_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_close))).?(pPCM);
@@ -1175,7 +1175,7 @@ pub fn ma_device_init_by_type__alsa(arg_pDevice: [*c]ma_device, arg_pConfig: [*c
         _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_ERROR)), "[ALSA] Failed to retrieve poll descriptors count.");
         return MA_ERROR;
     }
-    pPollDescriptors = @as([*c]struct_pollfd, @ptrCast(@alignCast(ma_malloc(@sizeOf(struct_pollfd) *% @as(c_ulong, @bitCast(@as(c_long, pollDescriptorCount + @as(c_int, 1)))), &pDevice.*.pContext.*.allocationCallbacks))));
+    pPollDescriptors = @as([*c]struct_pollfd, @ptrCast(@alignCast(ma_malloc(@sizeOf(struct_pollfd) *% @as(usize, @bitCast(@as(isize, pollDescriptorCount + @as(c_int, 1)))), &pDevice.*.pContext.*.allocationCallbacks))));
     if (pPollDescriptors == null) {
         _ = @as(ma_snd_pcm_close_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_close))).?(pPCM);
         _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_ERROR)), "[ALSA] Failed to allocate memory for poll descriptors.");
@@ -1296,11 +1296,11 @@ pub fn ma_device_stop__alsa(arg_pDevice: [*c]ma_device) callconv(.c) ma_result {
         } else {
             _ = ma_log_postf(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_DEBUG)), @as([*:0]const u8, "[ALSA] Preparing capture device successful.\n"));
         }
-        resultPoll = poll(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsCapture))), @as(nfds_t, @bitCast(@as(c_long, @as(c_int, 1)))), @as(c_int, 0));
+        resultPoll = poll(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsCapture))), @as(nfds_t, @bitCast(@as(isize, @as(c_int, 1)))), @as(c_int, 0));
         if (resultPoll > 0) {
             var t: ma_uint64 = undefined;
             resultRead = @as(c_int, @bitCast(@as(c_int, @truncate(read(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsCapture)))[@as(c_uint, @intCast(@as(c_int, 0)))].fd, @as(?*anyopaque, @ptrCast(&t)), @sizeOf(ma_uint64))))));
-            if (@as(c_ulong, @bitCast(@as(c_long, resultRead))) != @sizeOf(ma_uint64)) {
+            if (@as(usize, @bitCast(@as(isize, resultRead))) != @sizeOf(ma_uint64)) {
                 _ = ma_log_postf(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_DEBUG)), "[ALSA] Failed to read from capture wakeupfd. read() = %d\n", resultRead);
             }
         }
@@ -1315,11 +1315,11 @@ pub fn ma_device_stop__alsa(arg_pDevice: [*c]ma_device) callconv(.c) ma_result {
         } else {
             _ = ma_log_postf(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_DEBUG)), @as([*:0]const u8, "[ALSA] Preparing playback device successful.\n"));
         }
-        resultPoll = poll(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsPlayback))), @as(nfds_t, @bitCast(@as(c_long, @as(c_int, 1)))), @as(c_int, 0));
+        resultPoll = poll(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsPlayback))), @as(nfds_t, @bitCast(@as(isize, @as(c_int, 1)))), @as(c_int, 0));
         if (resultPoll > 0) {
             var t: ma_uint64 = undefined;
             resultRead = @as(c_int, @bitCast(@as(c_int, @truncate(read(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsPlayback)))[@as(c_uint, @intCast(@as(c_int, 0)))].fd, @as(?*anyopaque, @ptrCast(&t)), @sizeOf(ma_uint64))))));
-            if (@as(c_ulong, @bitCast(@as(c_long, resultRead))) != @sizeOf(ma_uint64)) {
+            if (@as(usize, @bitCast(@as(isize, resultRead))) != @sizeOf(ma_uint64)) {
                 _ = ma_log_postf(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_DEBUG)), "[ALSA] Failed to read from playback wakeupfd. read() = %d\n", resultRead);
             }
         }
@@ -1340,7 +1340,7 @@ pub fn ma_device_wait__alsa(arg_pDevice: [*c]ma_device, arg_pPCM: ?*ma_snd_pcm_t
     while (true) {
         var revents: c_ushort = undefined;
         var resultALSA: c_int = undefined;
-        const resultPoll: c_int = poll(pPollDescriptors, @as(nfds_t, @bitCast(@as(c_long, pollDescriptorCount))), -@as(c_int, 1));
+        const resultPoll: c_int = poll(pPollDescriptors, @as(nfds_t, @bitCast(@as(isize, pollDescriptorCount))), -@as(c_int, 1));
         if (resultPoll < 0) {
             _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_WARNING)), "[ALSA] poll() failed.\n");
             continue;
@@ -1403,21 +1403,21 @@ pub fn ma_device_read__alsa(arg_pDevice: [*c]ma_device, arg_pFramesOut: ?*anyopa
         if (result != MA_SUCCESS) {
             return result;
         }
-        resultALSA = @as(ma_snd_pcm_readi_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_readi))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMCapture)), pFramesOut, @as(ma_snd_pcm_uframes_t, @bitCast(@as(c_ulong, frameCount))));
-        if (resultALSA >= @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        resultALSA = @as(ma_snd_pcm_readi_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_readi))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMCapture)), pFramesOut, @as(ma_snd_pcm_uframes_t, @bitCast(@as(usize, frameCount))));
+        if (resultALSA >= @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(c_int, 0))))) {
             break;
         } else {
-            if (resultALSA == @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, -@as(c_int, 11))))) {
+            if (resultALSA == @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, -@as(c_int, 11))))) {
                 continue;
-            } else if (resultALSA == @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, -@as(c_int, 32))))) {
+            } else if (resultALSA == @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, -@as(c_int, 32))))) {
                 _ = ma_log_postf(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_DEBUG)), @as([*:0]const u8, "EPIPE (read)\n"));
-                resultALSA = @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(ma_snd_pcm_recover_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_recover))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMCapture)), @as(c_int, @bitCast(@as(c_int, @truncate(resultALSA)))), @as(c_int, 1)))));
-                if (resultALSA < @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                resultALSA = @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(ma_snd_pcm_recover_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_recover))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMCapture)), @as(c_int, @bitCast(@as(c_int, @truncate(resultALSA)))), @as(c_int, 1)))));
+                if (resultALSA < @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(c_int, 0))))) {
                     _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_ERROR)), "[ALSA] Failed to recover device after overrun.");
                     return ma_result_from_errno(@as(c_int, @bitCast(@as(c_int, @truncate(-resultALSA)))));
                 }
-                resultALSA = @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(ma_snd_pcm_start_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_start))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMCapture))))));
-                if (resultALSA < @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                resultALSA = @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(ma_snd_pcm_start_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_start))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMCapture))))));
+                if (resultALSA < @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(c_int, 0))))) {
                     _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_ERROR)), "[ALSA] Failed to start device after underrun.");
                     return ma_result_from_errno(@as(c_int, @bitCast(@as(c_int, @truncate(-resultALSA)))));
                 }
@@ -1451,21 +1451,21 @@ pub fn ma_device_write__alsa(arg_pDevice: [*c]ma_device, arg_pFrames: ?*const an
         if (result != MA_SUCCESS) {
             return result;
         }
-        resultALSA = @as(ma_snd_pcm_writei_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_writei))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMPlayback)), pFrames, @as(ma_snd_pcm_uframes_t, @bitCast(@as(c_ulong, frameCount))));
-        if (resultALSA >= @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(c_int, 0))))) {
+        resultALSA = @as(ma_snd_pcm_writei_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_writei))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMPlayback)), pFrames, @as(ma_snd_pcm_uframes_t, @bitCast(@as(usize, frameCount))));
+        if (resultALSA >= @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(c_int, 0))))) {
             break;
         } else {
-            if (resultALSA == @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, -@as(c_int, 11))))) {
+            if (resultALSA == @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, -@as(c_int, 11))))) {
                 continue;
-            } else if (resultALSA == @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, -@as(c_int, 32))))) {
+            } else if (resultALSA == @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, -@as(c_int, 32))))) {
                 _ = ma_log_postf(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_DEBUG)), @as([*:0]const u8, "EPIPE (write)\n"));
-                resultALSA = @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(ma_snd_pcm_recover_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_recover))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMPlayback)), @as(c_int, @bitCast(@as(c_int, @truncate(resultALSA)))), @as(c_int, 1)))));
-                if (resultALSA < @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                resultALSA = @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(ma_snd_pcm_recover_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_recover))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMPlayback)), @as(c_int, @bitCast(@as(c_int, @truncate(resultALSA)))), @as(c_int, 1)))));
+                if (resultALSA < @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(c_int, 0))))) {
                     _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_ERROR)), "[ALSA] Failed to recover device after underrun.");
                     return ma_result_from_errno(@as(c_int, @bitCast(@as(c_int, @truncate(-resultALSA)))));
                 }
-                resultALSA = @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(ma_snd_pcm_start_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_start))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMPlayback))))));
-                if (resultALSA < @as(ma_snd_pcm_sframes_t, @bitCast(@as(c_long, @as(c_int, 0))))) {
+                resultALSA = @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(ma_snd_pcm_start_proc, @ptrCast(@alignCast(pDevice.*.pContext.*.unnamed_0.alsa.snd_pcm_start))).?(@as(?*ma_snd_pcm_t, @ptrCast(pDevice.*.unnamed_0.alsa.pPCMPlayback))))));
+                if (resultALSA < @as(ma_snd_pcm_sframes_t, @bitCast(@as(isize, @as(c_int, 0))))) {
                     _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_ERROR)), "[ALSA] Failed to start device after underrun.");
                     return ma_result_from_errno(@as(c_int, @bitCast(@as(c_int, @truncate(-resultALSA)))));
                 }

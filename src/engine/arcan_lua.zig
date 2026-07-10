@@ -1203,7 +1203,7 @@ export fn arcan_lua_tick(ctx: ?*lua_State, nticks_arg: usize, global: usize) voi
     if (c.alt_lookup_entry(ctx, "clock_pulse_batch", 17)) {
         c.lua_pushnumber(ctx, @as(lua_Number, @floatFromInt(global)));
         c.lua_pushnumber(ctx, @as(lua_Number, @floatFromInt(nticks)));
-        c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(c_long, c.EP_TRIGGER_CLOCK))), 0, 2, 0, @as([*c]const u8, "arcan_lua.zig:clock_pulse_batch"));
+        c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(isize, c.EP_TRIGGER_CLOCK))), 0, 2, 0, @as([*c]const u8, "arcan_lua.zig:clock_pulse_batch"));
         return;
     }
 
@@ -1214,7 +1214,7 @@ export fn arcan_lua_tick(ctx: ?*lua_State, nticks_arg: usize, global: usize) voi
             break;
         c.lua_pushnumber(ctx, @as(lua_Number, @floatFromInt(global)));
         c.lua_pushnumber(ctx, @as(lua_Number, 1.0));
-        c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(c_long, c.EP_TRIGGER_CLOCK))), 0, 2, 0, @as([*c]const u8, "arcan_lua.zig:clock_pulse"));
+        c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(isize, c.EP_TRIGGER_CLOCK))), 0, 2, 0, @as([*c]const u8, "arcan_lua.zig:clock_pulse"));
     }
 
     c.alt_trace_finish(ctx);
@@ -1279,7 +1279,7 @@ export fn arcan_lua_launch_cp(ctx: ?*lua_State, cp_arg: [*c]const u8, key: [*c]c
     lua_pushvid(ctx, c.ARCAN_EID);
     c.lua_pushboolean(ctx, 1);
 
-    c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(c_long, c.EP_TRIGGER_ADOPT))), 0, 5, 1, @as([*c]const u8, "arcan_lua.zig:adopt"));
+    c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(isize, c.EP_TRIGGER_ADOPT))), 0, 5, 1, @as([*c]const u8, "arcan_lua.zig:adopt"));
 
     if (c.lua_type(ctx, -1) == c.LUA_TBOOLEAN and c.lua_toboolean(ctx, -1) != 0) {
         c.lua_settop(ctx, -2);
@@ -1364,7 +1364,7 @@ export fn arcan_lua_adopt(ctx: ?*lua_State) void {
             lua_pushvid(ctx, fsrv_helper_get_parent_vid(fsrv_ptr));
             c.lua_pushboolean(ctx, @intFromBool(idx == effective - 1));
 
-            c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(c_long, c.EP_TRIGGER_ADOPT))), 0, 5, 1, @as([*c]const u8, "arcan_lua.zig:adopt"));
+            c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(isize, c.EP_TRIGGER_ADOPT))), 0, 5, 1, @as([*c]const u8, "arcan_lua.zig:adopt"));
 
             // If we get explicit accept, don't delete
             if (c.lua_type(ctx, -1) == c.LUA_TBOOLEAN and c.lua_toboolean(ctx, -1) != 0) {
@@ -1678,7 +1678,7 @@ export fn arcan_lua_callvoidfun(
             c.lua_rawset(ctx, top);
         }
 
-        c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(c_long, c.EP_TRIGGER_MAIN))), 0, 1, 0, fun);
+        c.alt_call(ctx, c.CB_SOURCE_NONE, @as(u64, @bitCast(@as(isize, c.EP_TRIGGER_MAIN))), 0, 1, 0, fun);
         return true;
     } else if (warn) {
         c.arcan_warning(@as([*c]const u8, "missing expected symbol ( %s )\n"), fun);
@@ -2212,7 +2212,7 @@ fn resource(ctx: ?*lua_State) callconv(.c) c_int {
     const mask: c_int = @as(c_int, @truncate(c.luaL_optinteger(
         ctx,
         2,
-        @as(c.lua_Integer, @bitCast(@as(c_long, c.DEFAULT_USERMASK))),
+        @as(c.lua_Integer, @bitCast(@as(isize, c.DEFAULT_USERMASK))),
     )));
     const res = c.arcan_find_resource(
         label,
@@ -5746,7 +5746,7 @@ export fn arcan_lwa_subseg_ev(
         alt_call(
             ctx,
             c.CB_SOURCE_NONE,
-            @as(u64, @bitCast(@as(c_long, c.EP_TRIGGER_LWA))),
+            @as(u64, @bitCast(@as(isize, c.EP_TRIGGER_LWA))),
             0,
             2,
             0,
@@ -5858,7 +5858,7 @@ export fn arcan_lwa_subseg_ev(
     alt_call(
         ctx,
         c.CB_SOURCE_NONE,
-        @as(u64, @bitCast(@as(c_long, c.EP_TRIGGER_LWA))),
+        @as(u64, @bitCast(@as(isize, c.EP_TRIGGER_LWA))),
         0,
         2,
         0,
@@ -5893,7 +5893,7 @@ export fn arcan_lwa_subseg_adopt(
     alt_call(
         L,
         c.CB_SOURCE_NONE,
-        @as(u64, @bitCast(@as(c_long, c.EP_TRIGGER_LWA))),
+        @as(u64, @bitCast(@as(isize, c.EP_TRIGGER_LWA))),
         0,
         2,
         0,
@@ -7931,7 +7931,7 @@ fn push_fsrv_ramp(dst: ?*c.arcan_frameserver, src: ?*c.lua_State, index: c_int, 
     c.platform_fsrv_enter(dst, &tramp);
     const rv = c.arcan_frameserver_setramps(
         dst,
-        @bitCast(@as(c_long, @intCast(index))),
+        @bitCast(@as(isize, @intCast(index))),
         &ramps,
         i,
         &ch_sz,
@@ -7954,7 +7954,7 @@ fn pull_fsrv_ramp(dst: ?*c.lua_State, src: ?*c.arcan_frameserver, ind: c_int) c_
     c.platform_fsrv_enter(src, &tramp);
     const rv = c.arcan_frameserver_getramps(
         src,
-        @bitCast(@as(c_long, @intCast(ind))),
+        @bitCast(@as(isize, @intCast(ind))),
         &tblbuf,
         @sizeOf([c.SHMIF_CMRAMP_UPLIM]f32),
         &ch_pos,
@@ -9046,7 +9046,7 @@ fn targethandler(ctx: ?*c.lua_State) callconv(.c) c_int {
         },
     ));
 
-    if (fsrv.tag != @as(isize, @bitCast(@as(c_long, c.LUA_NOREF)))) {
+    if (fsrv.tag != @as(isize, @bitCast(@as(isize, c.LUA_NOREF)))) {
         c.luaL_unref(ctx, c.LUA_REGISTRYINDEX, @as(c_int, @intCast(fsrv.tag)));
     }
 
@@ -9088,7 +9088,7 @@ fn targetpacify(ctx: ?*c.lua_State) callconv(.c) c_int {
     const mask = luaL_optbnumber(ctx, 2, true);
 
     if (mask) {
-        @as(*isize, @ptrCast(@alignCast(@constCast(&fsrv.tag)))).* = @as(isize, @bitCast(@as(c_long, c.LUA_NOREF)));
+        @as(*isize, @ptrCast(@alignCast(@constCast(&fsrv.tag)))).* = @as(isize, @bitCast(@as(isize, c.LUA_NOREF)));
 
         _ = c.arcan_frameserver_free(fsrv);
         vobj.*.feed.ffunc = c.FFUNC_NULLFRAME;
@@ -9559,8 +9559,8 @@ fn targetdisphint(ctx: ?*c.lua_State) callconv(.c) c_int {
     // forward the rendering relevant information to the frameserver
     c.arcan_frameserver_displayhint(
         fsrv,
-        @as(usize, @bitCast(@as(c_long, width))),
-        @as(usize, @bitCast(@as(c_long, height))),
+        @as(usize, @bitCast(@as(isize, width))),
+        @as(usize, @bitCast(@as(isize, height))),
         ppcm,
     );
 
@@ -10306,7 +10306,7 @@ fn spawn_subsegment(
         @as(c_int, @bitCast(@as(c_uint, hints))),
         w,
         h,
-        @as(usize, @bitCast(@as(c_long, @truncate(newvid)))),
+        @as(usize, @bitCast(@as(isize, @truncate(newvid)))),
         reqid,
     );
 
@@ -10373,7 +10373,7 @@ fn targetaccept_lwa(ctx: ?*c.lua_State) c_int {
         return 0;
     }
 
-    const newref_opt = c.platform_fsrv_wrapcl(C, @as(usize, @bitCast(@as(c_long, @truncate(newvid)))));
+    const newref_opt = c.platform_fsrv_wrapcl(C, @as(usize, @bitCast(@as(isize, @truncate(newvid)))));
 
     if (newref_opt == null) {
         lua_pushvid(ctx, c.ARCAN_EID);
@@ -10831,25 +10831,25 @@ fn clock_transform(vobj: [*c]c.arcan_vobject, dst: *transform_cs) void {
     var current: [*c]c.surface_transform = vobj.*.transform;
     while (current != null) {
         var tc: usize = if (current.*.blend.endt != 0)
-            @as(usize, @bitCast(@as(c_ulong, current.*.blend.endt))) -% luactx.last_clock
+            @as(usize, @bitCast(@as(usize, current.*.blend.endt))) -% luactx.last_clock
         else
             0;
         if (tc > dst.blend) dst.blend = tc;
 
         tc = if (current.*.move.endt != 0)
-            @as(usize, @bitCast(@as(c_ulong, current.*.move.endt))) -% luactx.last_clock
+            @as(usize, @bitCast(@as(usize, current.*.move.endt))) -% luactx.last_clock
         else
             0;
         if (tc > dst.move) dst.move = tc;
 
         tc = if (current.*.rotate.endt != 0)
-            @as(usize, @bitCast(@as(c_ulong, current.*.rotate.endt))) -% luactx.last_clock
+            @as(usize, @bitCast(@as(usize, current.*.rotate.endt))) -% luactx.last_clock
         else
             0;
         if (tc > dst.rotate) dst.rotate = tc;
 
         tc = if (current.*.scale.endt != 0)
-            @as(usize, @bitCast(@as(c_ulong, current.*.scale.endt))) -% luactx.last_clock
+            @as(usize, @bitCast(@as(usize, current.*.scale.endt))) -% luactx.last_clock
         else
             0;
         if (tc > dst.scale) dst.scale = tc;
@@ -11821,7 +11821,7 @@ pub export fn arcan_lua_proctarget(
     alt_call(
         src.ctx,
         c.CB_SOURCE_IMAGE,
-        @bitCast(@as(c_long, c.EP_TRIGGER_IMAGE)),
+        @bitCast(@as(isize, c.EP_TRIGGER_IMAGE)),
         0,
         3,
         0,
@@ -11978,7 +11978,7 @@ fn imagestorage(ctx: ?*lua_State) callconv(.c) c_int {
         narg += 2;
     }
 
-    alt_call(ctx, c.CB_SOURCE_IMAGE, @bitCast(@as(c_long, c.EP_TRIGGER_IMAGE)), 0, @intCast(narg), 0, "calctarget:callback");
+    alt_call(ctx, c.CB_SOURCE_IMAGE, @bitCast(@as(isize, c.EP_TRIGGER_IMAGE)), 0, @intCast(narg), 0, "calctarget:callback");
 
     c.lua_pushboolean(ctx, 1);
     return 1;
@@ -12900,7 +12900,7 @@ fn benchtracedata(ctx: ?*lua_State) callconv(.c) c_int {
         subsys,
         @as(u8, @bitCast(@as(i8, @truncate(trigger)))),
         @as(u8, @bitCast(@as(i8, @truncate(level)))),
-        @as(u64, @bitCast(@as(c_long, ident))),
+        @as(u64, @bitCast(@as(isize, ident))),
         @as(u32, @bitCast(quant)),
         message,
         @as([*c]u8, @ptrCast(@alignCast(&ar.short_src))),

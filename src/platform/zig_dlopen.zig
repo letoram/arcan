@@ -15,6 +15,7 @@ const builtin = @import("builtin");
 
 pub const impl = switch (builtin.os.tag) {
     .macos, .ios, .watchos, .tvos => @import("zig_dlopen_macos.zig"),
+    .windows => @import("zig_dlopen_windows.zig"),
     else => @import("zig_dlopen_linux.zig"),
 };
 

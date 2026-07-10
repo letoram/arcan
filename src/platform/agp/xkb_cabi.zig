@@ -227,8 +227,8 @@ pub extern fn sprintf(noalias __s: [*c]u8, noalias __format: [*c]const u8, ...) 
 pub extern fn vfprintf(noalias __s: ?*FILE, noalias __format: [*c]const u8, __arg: __builtin_va_list) c_int;
 pub extern fn vprintf(noalias __format: [*c]const u8, __arg: __builtin_va_list) c_int;
 pub extern fn vsprintf(noalias __s: [*c]u8, noalias __format: [*c]const u8, __arg: __builtin_va_list) c_int;
-pub extern fn snprintf(noalias __s: [*c]u8, __maxlen: c_ulong, noalias __format: [*c]const u8, ...) c_int;
-pub extern fn vsnprintf(noalias __s: [*c]u8, __maxlen: c_ulong, noalias __format: [*c]const u8, __arg: __builtin_va_list) c_int;
+pub extern fn snprintf(noalias __s: [*c]u8, __maxlen: usize, noalias __format: [*c]const u8, ...) c_int;
+pub extern fn vsnprintf(noalias __s: [*c]u8, __maxlen: usize, noalias __format: [*c]const u8, __arg: __builtin_va_list) c_int;
 pub extern fn vasprintf(noalias __ptr: [*c][*c]u8, noalias __f: [*c]const u8, __arg: __gnuc_va_list) c_int;
 pub extern fn __asprintf(noalias __ptr: [*c][*c]u8, noalias __fmt: [*c]const u8, ...) c_int;
 pub extern fn asprintf(noalias __ptr: [*c][*c]u8, noalias __fmt: [*c]const u8, ...) c_int;
@@ -266,8 +266,8 @@ pub extern fn getline(noalias __lineptr: [*c][*c]u8, noalias __n: [*c]usize, noa
 pub extern fn fputs(noalias __s: [*c]const u8, noalias __stream: ?*FILE) c_int;
 pub extern fn puts(__s: [*c]const u8) c_int;
 pub extern fn ungetc(__c: c_int, __stream: ?*FILE) c_int;
-pub extern fn fread(__ptr: ?*anyopaque, __size: c_ulong, __n: c_ulong, __stream: ?*FILE) c_ulong;
-pub extern fn fwrite(__ptr: ?*const anyopaque, __size: c_ulong, __n: c_ulong, __s: ?*FILE) c_ulong;
+pub extern fn fread(__ptr: ?*anyopaque, __size: usize, __n: usize, __stream: ?*FILE) usize;
+pub extern fn fwrite(__ptr: ?*const anyopaque, __size: usize, __n: usize, __s: ?*FILE) usize;
 pub extern fn fread_unlocked(noalias __ptr: ?*anyopaque, __size: usize, __n: usize, noalias __stream: ?*FILE) usize;
 pub extern fn fwrite_unlocked(noalias __ptr: ?*const anyopaque, __size: usize, __n: usize, noalias __stream: ?*FILE) usize;
 pub extern fn fseek(__stream: ?*FILE, __off: c_long, __whence: c_int) c_int;
@@ -494,7 +494,7 @@ pub fn __bswap_32(arg___bsx: __uint32_t) callconv(.c) __uint32_t {
 pub fn __bswap_64(arg___bsx: __uint64_t) callconv(.c) __uint64_t {
     var __bsx = arg___bsx;
     _ = &__bsx;
-    return @as(__uint64_t, @bitCast(@as(c_ulong, @truncate(((((((((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 18374686479671623680)) >> @intCast(56)) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 71776119061217280)) >> @intCast(40))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 280375465082880)) >> @intCast(24))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 1095216660480)) >> @intCast(8))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 4278190080)) << @intCast(8))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 16711680)) << @intCast(24))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 65280)) << @intCast(40))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 255)) << @intCast(56))))));
+    return @as(__uint64_t, @bitCast(@as(usize, @truncate(((((((((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 18374686479671623680)) >> @intCast(56)) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 71776119061217280)) >> @intCast(40))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 280375465082880)) >> @intCast(24))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 1095216660480)) >> @intCast(8))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 4278190080)) << @intCast(8))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 16711680)) << @intCast(24))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 65280)) << @intCast(40))) | ((@as(c_ulonglong, @bitCast(@as(c_ulonglong, __bsx))) & @as(c_ulonglong, 255)) << @intCast(56))))));
 }
 pub fn __uint16_identity(arg___x: __uint16_t) callconv(.c) __uint16_t {
     var __x = arg___x;
