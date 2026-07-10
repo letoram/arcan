@@ -175,6 +175,9 @@ fn linkFsrvStdlib(exe: *std.Build.Step.Compile) void {
     // the link. Only Linux/BSD split them into separate libraries.
     switch (exe.rootModuleTarget().os.tag) {
         .ios, .macos, .watchos, .tvos => {},
+        // windows: m/atomic come from compiler-rt, dl/pthread/rt from the win
+        // substrate; none exist as standalone import libs. (windows port)
+        .windows => {},
         else => for ([_][]const u8{ "m", "rt", "dl", "pthread", "atomic" }) |lib| exe.linkSystemLibrary(lib),
     }
 }
@@ -182,6 +185,7 @@ fn linkFsrvStdlib(exe: *std.Build.Step.Compile) void {
 fn linkUtil(exe: *std.Build.Step.Compile) void {
     switch (exe.rootModuleTarget().os.tag) {
         .ios, .macos, .watchos, .tvos => {}, // forkpty/openpty are in libSystem
+        .windows => {}, // no forkpty on windows (windows port)
         else => exe.linkSystemLibrary("util"),
     }
 }
@@ -401,20 +405,22 @@ pub fn build(b: *std.Build) void {
         .build_shmif_server = b.option(bool, "build_shmif_server", "Build arcan_shmif_server library (default: true)") orelse true,
         .build_shmif = b.option(bool, "build_shmif", "Build arcan_shmif library (default: true)") orelse true,
         .build_tui = b.option(bool, "build_tui", "Build arcan_tui library (default: true)") orelse true,
-        .build_a12 = b.option(bool, "build_a12", "Build arcan_a12 library (default: true)") orelse true,
+        // a12/net is deferred on windows (needs the posix fd/socket substrate);
+        // the compositor path links without it. (windows port)
+        .build_a12 = b.option(bool, "build_a12", "Build arcan_a12 library (default: true)") orelse (target.result.os.tag != .windows),
         .build_arcan_db = b.option(bool, "build_arcan_db", "Build arcan_db database tool (default: false)") orelse build_all,
-        .build_arcan_frameserver = b.option(bool, "build_arcan_frameserver", "Build arcan_frameserver chainloader (default: true)") orelse true,
-        .build_afsrv_terminal = b.option(bool, "build_afsrv_terminal", "Build afsrv_terminal frameserver (default: true)") orelse true,
-        .build_afsrv_decode = b.option(bool, "build_afsrv_decode", "Build afsrv_decode frameserver (default: true)") orelse true,
+        .build_arcan_frameserver = b.option(bool, "build_arcan_frameserver", "Build arcan_frameserver chainloader (default: true)") orelse (target.result.os.tag != .windows),
+        .build_afsrv_terminal = b.option(bool, "build_afsrv_terminal", "Build afsrv_terminal frameserver (default: true)") orelse (target.result.os.tag != .windows),
+        .build_afsrv_decode = b.option(bool, "build_afsrv_decode", "Build afsrv_decode frameserver (default: true)") orelse (target.result.os.tag != .windows),
         .build_afsrv_encode = b.option(bool, "build_afsrv_encode", "Build afsrv_encode frameserver (default: false, needs a12 fixes)") orelse build_all,
         .build_afsrv_net = b.option(bool, "build_afsrv_net", "Build afsrv_net frameserver (default: false, needs a12 fixes)") orelse build_all,
-        .build_arcan_net = b.option(bool, "build_arcan_net", "Build arcan-net directory/bridge binary (pure Zig)") orelse true,
-        .build_arcan_net_session = b.option(bool, "build_arcan_net_session", "Build arcan-net-session binary (pure Zig)") orelse true,
+        .build_arcan_net = b.option(bool, "build_arcan_net", "Build arcan-net directory/bridge binary (pure Zig)") orelse (target.result.os.tag != .windows),
+        .build_arcan_net_session = b.option(bool, "build_arcan_net_session", "Build arcan-net-session binary (pure Zig)") orelse (target.result.os.tag != .windows),
         .build_afsrv_remoting = b.option(bool, "build_afsrv_remoting", "Build afsrv_remoting frameserver (default: false, needs a12 fixes)") orelse build_all,
-        .build_afsrv_game = b.option(bool, "build_afsrv_game", "Build afsrv_game frameserver (default: true)") orelse true,
-        .build_afsrv_avfeed = b.option(bool, "build_afsrv_avfeed", "Build afsrv_avfeed frameserver (default: true)") orelse true,
+        .build_afsrv_game = b.option(bool, "build_afsrv_game", "Build afsrv_game frameserver (default: true)") orelse (target.result.os.tag != .windows),
+        .build_afsrv_avfeed = b.option(bool, "build_afsrv_avfeed", "Build afsrv_avfeed frameserver (default: true)") orelse (target.result.os.tag != .windows),
         .build_afsrv_bun = b.option(bool, "build_afsrv_bun", "Build afsrv_bun frameserver — embedded Bun host for JS/TS shmif clients (default: false, see bugs/0036)") orelse false,
-        .build_afsrv_probe = b.option(bool, "build_afsrv_probe", "Build afsrv_probe frameserver (drives a12 coverage probes)") orelse true,
+        .build_afsrv_probe = b.option(bool, "build_afsrv_probe", "Build afsrv_probe frameserver (drives a12 coverage probes)") orelse (target.result.os.tag != .windows),
         .build_arcan_vk = b.option(bool, "build_arcan_vk", "Build arcan Vulkan VK_KHR_display compositor (default: true)") orelse true,
         .build_shmif_ext = b.option(bool, "build_shmif_ext", "Build arcan_shmif_ext stub library (default: false)") orelse build_all,
         .build_aclip = b.option(bool, "build_aclip", "Build aclip clipboard tool (default: false)") orelse build_all,
@@ -1308,18 +1314,26 @@ pub fn build(b: *std.Build) void {
     // (shmif/shmif_server/tui/a12) — useful for bring-up on a new platform
     // before the compositor/frameserver substrate is ready.
     if (opts.build_arcan_vk) {
-        const arcan_fs = createArcanFrameserver(b, opts);
-        const install_fs = b.addInstallArtifact(arcan_fs, .{});
-        const afsrv_term = createAfsrvTerminal(b, opts, arcan_shmif, arcan_shmif_server, arcan_tui);
-        const install_term = b.addInstallArtifact(afsrv_term, .{});
-        const afsrv_dec = createAfsrvDecode(b, opts, arcan_shmif, arcan_shmif_server, arcan_tui);
-        const install_dec = b.addInstallArtifact(afsrv_dec, .{});
-
         const arcan_vk_exe = createArcanVk(b, opts, arcan_shmif, arcan_shmif_server);
         const install_exe = b.addInstallArtifact(arcan_vk_exe, .{});
         const default_step = b.getInstallStep();
+        default_step.dependOn(&install_exe.step);
+
+        // The frameserver chainloader + afsrv_* are the posix fork/exec spawn
+        // model; windows launches frameservers via CreateProcess directly, so
+        // they are deferred there (the compositor arcan.exe links without
+        // them). (windows port)
+        if (opts.target.result.os.tag != .windows) {
+            const arcan_fs = createArcanFrameserver(b, opts);
+            const install_fs = b.addInstallArtifact(arcan_fs, .{});
+            const afsrv_term = createAfsrvTerminal(b, opts, arcan_shmif, arcan_shmif_server, arcan_tui);
+            const install_term = b.addInstallArtifact(afsrv_term, .{});
+            const afsrv_dec = createAfsrvDecode(b, opts, arcan_shmif, arcan_shmif_server, arcan_tui);
+            const install_dec = b.addInstallArtifact(afsrv_dec, .{});
+            for ([_]*std.Build.Step{ &install_fs.step, &install_term.step, &install_dec.step }) |s|
+                default_step.dependOn(s);
+        }
         for ([_]*std.Build.Step{
-            &install_exe.step, &install_fs.step, &install_term.step, &install_dec.step,
             &install_resources.step, &install_scripts.step, &install_appls.step, &install_src.step,
         }) |s| default_step.dependOn(s);
         if (install_durden) |s| default_step.dependOn(s);
@@ -2065,7 +2079,7 @@ fn createArcanDb(b: *std.Build, opts: Opts) *std.Build.Step.Compile {
     }
     addShmifZigSourceNoLlvm(b, exe, "src/platform/posix/warning.zig", opts);
     addIncludes(exe, b, &.{ "src/engine", "src/platform", "src/frameserver" });
-    exe.linkSystemLibrary("pthread");
+    if (exe.rootModuleTarget().os.tag != .windows) exe.linkSystemLibrary("pthread"); // win threads via substrate
     return exe;
 }
 
@@ -2950,7 +2964,7 @@ fn addCompositorCommon(
     // provide their symbols; the actual .so files are resolved at process
     // startup via zig_dlopen. No static link, no dynamic link at build time.
     addRuntimeDlShims(exe, b, opts);
-    exe.linkSystemLibrary("dl");
+    if (exe.rootModuleTarget().os.tag != .windows) exe.linkSystemLibrary("dl"); // win dlopen via kernel32 (windows port)
     linkFsrvStdlib(exe);
 
     // arcan_tui is NOT linked as a library — its sources are compiled directly above
@@ -3177,7 +3191,7 @@ fn createArcanVk(b: *std.Build, opts: Opts, arcan_shmif: *std.Build.Step.Compile
     // libdrm / xkbcommon / xcb: all loaded at runtime via zig_dlopen shims.
     // addRuntimeDlShims (called above) added the shim objects; nothing more
     // to link here.
-    if (opts.target.result.abi != .musl) {
+    if (opts.target.result.abi != .musl and opts.target.result.os.tag != .windows) {
         exe.linkSystemLibrary("dl");
     }
     return exe;
@@ -3422,8 +3436,10 @@ fn addShmifPlatformSources(b: *std.Build, lib: *std.Build.Step.Compile, opts: Op
         },
         .windows => {
             // Win32 substrate: clock (QueryPerformanceCounter), semaphores
-            // (CreateSemaphore), and the broader posix shim layer.
-            for ([_]String{ "src/platform/windows/time.zig", "src/platform/windows/sem.zig" }) |zig_src|
+            // (CreateSemaphore), and the broader posix shim layer that defines
+            // the ~100 posix symbols the tree links against (mmap/dlopen/errno/
+            // stdio/winsock/setjmp + stubs). (windows port)
+            for ([_]String{ "src/platform/windows/time.zig", "src/platform/windows/sem.zig", "src/platform/windows/posix_substrate.zig" }) |zig_src|
                 addShmifZigSource(b, lib, zig_src, opts);
         },
         else => {},

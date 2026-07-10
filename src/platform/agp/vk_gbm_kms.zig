@@ -107,7 +107,7 @@ pub const Swapchain = struct {
     images: [4]vk.Image = std.mem.zeroes([4]vk.Image),
     views: [4]vk.ImageView = std.mem.zeroes([4]vk.ImageView),
     memory: [4]vk.DeviceMemory = std.mem.zeroes([4]vk.DeviceMemory),
-    dmabuf_fds: [4]std.posix.fd_t = .{ -1, -1, -1, -1 },
+    dmabuf_fds: [4]c_int = .{ -1, -1, -1, -1 },
     kms_fb_ids: [4]u32 = .{ 0, 0, 0, 0 },
 
     image_count: u32 = 0,
@@ -116,7 +116,7 @@ pub const Swapchain = struct {
     extent: vk.Extent2D = .{ .width = 0, .height = 0 },
     format: vk.Format = .a2r10g10b10_unorm_pack32,
 
-    drm_fd: std.posix.fd_t = -1,
+    drm_fd: c_int = -1,
     connector_id: u32 = 0,
     crtc_id: u32 = 0,
     saved_crtc: ?*c.drmModeCrtc = null, // restored on destroy

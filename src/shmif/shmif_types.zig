@@ -705,7 +705,7 @@ pub const struct_nonblock_io = extern struct {
     lfstrip: bool = false,
     _pad0: [2]u8 = std.mem.zeroes([2]u8),
     _pad0b: [4]u8 = std.mem.zeroes([4]u8),
-    ofs: c_long = 0,
+    ofs: i64 = 0,
     lfch: u8 = 0,
     _pad1: [3]u8 = std.mem.zeroes([3]u8),
     fd: c_int = 0,
@@ -2425,4 +2425,50 @@ pub fn getenvSpan(name: [*:0]const u8) ?[:0]const u8 {
     const p = getenv(name); // [*c]u8 (nullable C pointer)
     if (p == null) return null;
     return std.mem.span(@as([*:0]const u8, @ptrCast(p)));
+}
+
+// ---- Cross-platform file stat (windows port) ----
+// std.posix.fstatat does not exist on Windows and fd is a HANDLE there, so the
+// posix stat path won't compile. arcan_ttf keys its font cache on (dev,ino);
+// provide it via the CRT's _stat64/_fstat64 on Windows (msvcrt is a link base,
+// like kernel32). The posix branch is comptime-pruned on Windows, so its
+// std.posix.AT.FDCWD reference is never analyzed there.
+pub const StatInfo = struct { dev: u64 = 0, ino: u64 = 0, size: u64 = 0, mode: u32 = 0 };
+
+const win_stat64 = extern struct {
+    st_dev: c_uint,
+    st_ino: c_ushort,
+    st_mode: c_ushort,
+    st_nlink: c_short,
+    st_uid: c_short,
+    st_gid: c_short,
+    st_rdev: c_uint,
+    st_size: i64,
+    st_atime: i64,
+    st_mtime: i64,
+    st_ctime: i64,
+};
+extern "c" fn _fstat64(fd: c_int, buf: *win_stat64) c_int;
+extern "c" fn _stat64(path: [*:0]const u8, buf: *win_stat64) c_int;
+
+pub fn statPath(path: [*:0]const u8) ?StatInfo {
+    if (builtin.os.tag == .windows) {
+        var b: win_stat64 = undefined;
+        if (_stat64(path, &b) != 0) return null;
+        return .{ .dev = b.st_dev, .ino = b.st_ino, .size = @intCast(b.st_size), .mode = b.st_mode };
+    } else {
+        const s = std.posix.fstatat(std.posix.AT.FDCWD, std.mem.span(path), 0) catch return null;
+        return .{ .dev = @intCast(s.dev), .ino = @intCast(s.ino), .size = @intCast(s.size), .mode = @intCast(s.mode) };
+    }
+}
+
+pub fn statFd(fd: c_int) ?StatInfo {
+    if (builtin.os.tag == .windows) {
+        var b: win_stat64 = undefined;
+        if (_fstat64(fd, &b) != 0) return null;
+        return .{ .dev = b.st_dev, .ino = b.st_ino, .size = @intCast(b.st_size), .mode = b.st_mode };
+    } else {
+        const s = std.posix.fstat(fd) catch return null;
+        return .{ .dev = @intCast(s.dev), .ino = @intCast(s.ino), .size = @intCast(s.size), .mode = @intCast(s.mode) };
+    }
 }

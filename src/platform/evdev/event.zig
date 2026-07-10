@@ -1729,12 +1729,14 @@ fn got_device(ctx: ?*arcan_evctx, fd: c_int, path: [*]const u8) void {
     node.handle = fd;
     node.led.fds = .{ BADFD, BADFD };
 
-    var fdstat: c.struct_stat = undefined;
-    if (c.fstat(fd, &fdstat) == -1)
-        return;
+    if (@import("builtin").os.tag != .windows) {
+        var fdstat: c.struct_stat = undefined;
+        if (c.fstat(fd, &fdstat) == -1)
+            return;
 
-    if ((fdstat.mode & (c.S_IFCHR | c.S_IFBLK)) == 0)
-        return;
+        if ((fdstat.mode & (c.S_IFCHR | c.S_IFBLK)) == 0)
+            return;
+    }
 
     if (!identify(fd, path, &node.label, node.label.len, &node.devnum)) {
         _ = c.close(fd);

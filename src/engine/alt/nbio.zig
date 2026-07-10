@@ -651,8 +651,12 @@ fn nbio_write(L: ?*lua_State) callconv(.c) c_int {
         iw.fd = c.open(iw.pending, O_NONBLOCK | O_WRONLY | O_CLOEXEC);
 
         if (iw.fd != -1) {
-            var fi: stat_t = undefined;
-            if (fstat(iw.fd, &fi) != -1 and !S_ISFIFO(fi.mode)) {
+            // FIFO sanity check is posix-only; windows has no FIFOs (windows port)
+            const not_fifo = if (builtin.os.tag == .windows) false else blk: {
+                var fi: stat_t = undefined;
+                break :blk (fstat(iw.fd, &fi) != -1 and !S_ISFIFO(fi.mode));
+            };
+            if (not_fifo) {
                 c.lua_pushnumber(L, 0);
                 c.lua_pushboolean(L, 0);
                 return 2;
@@ -1203,6 +1207,12 @@ fn build_fifo_ipc(path: [*c]u8, userns: bool, expect_write: bool) pathfd {
     const workpath: [*c]u8 = arcan_expand_resource(path, ns);
     if (workpath == null) {
         res.err = "Couldn't expand FIFO path";
+        return res;
+    }
+
+    if (builtin.os.tag == .windows) {
+        arcan_mem_free(@ptrCast(workpath));
+        res.err = "FIFO (open_nonblock target) unsupported on windows";
         return res;
     }
 

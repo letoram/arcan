@@ -204,7 +204,7 @@ export fn shmif_platform_fetchfds(
                     const sc_getpid = @extern(*const fn () callconv(.c) c_int, .{ .name = "getpid" });
                     if (sc_open("/tmp/arcan_shmif_trace.log", "a")) |f| {
                         _ = sc_fprintf(f, "[%d] fetchfds: wait_ms=%ld spins=%u sockin_fd=%d\n",
-                            sc_getpid(), @as(c_long, wait_ms), spin_count, sockin_fd);
+                            sc_getpid(), @as(c_longlong, wait_ms), spin_count, sockin_fd);
                         _ = sc_fclose(f);
                     }
                 }

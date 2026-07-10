@@ -110,7 +110,7 @@ pub fn acquireDrmDisplay(
 
     // Find the DRM card that has display connectors (not the GPU render card).
     // On Apple Silicon: card1=asahi (GPU), card2=apple-drm (display).
-    var drm_fd: std.posix.fd_t = -1;
+    var drm_fd: c_int = -1;
     var connector_ids: [8]u32 = undefined;
     var connector_count: u32 = 0;
     var display_card_idx: u8 = 0;
@@ -212,7 +212,7 @@ pub fn acquireDrmDisplay(
 
     // Also open the GPU render card — some drivers need the GPU's own DRM fd
     // for getDrmDisplayEXT rather than the display card's fd.
-    var gpu_fd: std.posix.fd_t = -1;
+    var gpu_fd: c_int = -1;
     {
         var gi: u8 = 0;
         while (gi < 8) : (gi += 1) {

@@ -3432,7 +3432,7 @@ fn update_object(ci: *arcan_vobject, stamp: c_ulonglong) c_int {
         }
     }
 
-    ci.last_updated = stamp;
+    ci.last_updated = @intCast(stamp);
 
     if (ci.transform == null)
         return upd;

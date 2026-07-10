@@ -1359,25 +1359,25 @@ pub fn math_type(arg_L: ?*lua_State) callconv(.c) c_int {
     }
     return 1;
 }
-pub fn rotl(arg_x: c_ulong, arg_n: c_int) callconv(.c) c_ulong {
+pub fn rotl(arg_x: usize, arg_n: c_int) callconv(.c) usize {
     var x = arg_x;
     _ = &x;
     var n = arg_n;
     _ = &n;
-    return (x << @intCast(n)) | ((x & @as(c_ulonglong, 18446744073709551615)) >> @intCast(@as(c_int, 64) - n));
+    return (x << @intCast(n)) | ((x & @as(usize, 0xFFFFFFFFFFFFFFFF)) >> @intCast(@as(c_int, 64) - n));
 }
-pub fn nextrand(arg_state: [*c]c_ulong) callconv(.c) c_ulong {
+pub fn nextrand(arg_state: [*c]usize) callconv(.c) usize {
     var state = arg_state;
     _ = &state;
-    var state0: c_ulong = state[@as(c_uint, @intCast(@as(c_int, 0)))];
+    var state0: usize = state[@as(c_uint, @intCast(@as(c_int, 0)))];
     _ = &state0;
-    var state1: c_ulong = state[@as(c_uint, @intCast(@as(c_int, 1)))];
+    var state1: usize = state[@as(c_uint, @intCast(@as(c_int, 1)))];
     _ = &state1;
-    var state2: c_ulong = state[@as(c_uint, @intCast(@as(c_int, 2)))] ^ state0;
+    var state2: usize = state[@as(c_uint, @intCast(@as(c_int, 2)))] ^ state0;
     _ = &state2;
-    var state3: c_ulong = state[@as(c_uint, @intCast(@as(c_int, 3)))] ^ state1;
+    var state3: usize = state[@as(c_uint, @intCast(@as(c_int, 3)))] ^ state1;
     _ = &state3;
-    var res: c_ulong = rotl(state1 *% @as(usize, @bitCast(@as(isize, @as(c_int, 5)))), @as(c_int, 7)) *% @as(usize, @bitCast(@as(isize, @as(c_int, 9))));
+    var res: usize = rotl(state1 *% @as(usize, @bitCast(@as(isize, @as(c_int, 5)))), @as(c_int, 7)) *% @as(usize, @bitCast(@as(isize, @as(c_int, 9))));
     _ = &res;
     state[@as(c_uint, @intCast(@as(c_int, 0)))] = state0 ^ state3;
     state[@as(c_uint, @intCast(@as(c_int, 1)))] = state1 ^ state2;
@@ -1385,13 +1385,13 @@ pub fn nextrand(arg_state: [*c]c_ulong) callconv(.c) c_ulong {
     state[@as(c_uint, @intCast(@as(c_int, 3)))] = rotl(state3, @as(c_int, 45));
     return res;
 }
-pub fn I2d(arg_x: c_ulong) callconv(.c) lua_Number {
+pub fn I2d(arg_x: usize) callconv(.c) lua_Number {
     var x = arg_x;
     _ = &x;
     return @as(lua_Number, @floatFromInt((x & @as(c_ulonglong, 18446744073709551615)) >> @intCast(@as(c_int, 64) - @as(c_int, 53)))) * (0.5 / @as(f64, @floatFromInt(@as(usize, @bitCast(@as(isize, @as(c_int, 1)))) << @intCast(@as(c_int, 53) - @as(c_int, 1)))));
 }
 pub const RanState = extern struct {
-    s: [4]c_ulong = std.mem.zeroes([4]c_ulong),
+    s: [4]usize = std.mem.zeroes([4]usize),
 };
 pub fn project(arg_ran: lua_Unsigned, arg_n: lua_Unsigned, arg_state: [*c]RanState) callconv(.c) lua_Unsigned {
     var ran = arg_ran;
@@ -1415,7 +1415,7 @@ pub fn project(arg_ran: lua_Unsigned, arg_n: lua_Unsigned, arg_state: [*c]RanSta
             ref.* &= lim;
             break :blk ref.*;
         }) > n) {
-            ran = @as(lua_Unsigned, @bitCast(@as(c_ulonglong, nextrand(@as([*c]c_ulong, @ptrCast(@alignCast(&state.*.s[@as(usize, @intCast(0))])))) & @as(c_ulonglong, 18446744073709551615))));
+            ran = @as(lua_Unsigned, @bitCast(@as(c_ulonglong, nextrand(@as([*c]usize, @ptrCast(@alignCast(&state.*.s[@as(usize, @intCast(0))])))) & @as(c_ulonglong, 18446744073709551615))));
         }
         return ran;
     }
@@ -1432,7 +1432,7 @@ pub fn math_random(arg_L: ?*lua_State) callconv(.c) c_int {
     _ = &p;
     var state: [*c]RanState = @as([*c]RanState, @ptrCast(@alignCast(lua_touserdata(L, (-@as(c_int, 1000000) - @as(c_int, 1000)) - @as(c_int, 1)))));
     _ = &state;
-    var rv: c_ulong = nextrand(@as([*c]c_ulong, @ptrCast(@alignCast(&state.*.s[@as(usize, @intCast(0))]))));
+    var rv: usize = nextrand(@as([*c]usize, @ptrCast(@alignCast(&state.*.s[@as(usize, @intCast(0))]))));
     _ = &rv;
     while (true) {
         switch (lua_gettop(L)) {
@@ -1469,7 +1469,7 @@ pub fn math_random(arg_L: ?*lua_State) callconv(.c) c_int {
     lua_pushinteger(L, @as(lua_Integer, @bitCast(p +% @as(lua_Unsigned, @bitCast(low)))));
     return 1;
 }
-pub fn setseed(arg_L: ?*lua_State, arg_state: [*c]c_ulong, arg_n1: lua_Unsigned, arg_n2: lua_Unsigned) callconv(.c) void {
+pub fn setseed(arg_L: ?*lua_State, arg_state: [*c]usize, arg_n1: lua_Unsigned, arg_n2: lua_Unsigned) callconv(.c) void {
     var L = arg_L;
     _ = &L;
     var state = arg_state;
@@ -1502,7 +1502,7 @@ pub fn randseed(arg_L: ?*lua_State, arg_state: [*c]RanState) callconv(.c) void {
     _ = &seed1;
     var seed2: lua_Unsigned = @as(lua_Unsigned, @bitCast(@as(c_ulonglong, @as(usize, @intCast(@intFromPtr(L))))));
     _ = &seed2;
-    setseed(L, @as([*c]c_ulong, @ptrCast(@alignCast(&state.*.s[@as(usize, @intCast(0))]))), seed1, seed2);
+    setseed(L, @as([*c]usize, @ptrCast(@alignCast(&state.*.s[@as(usize, @intCast(0))]))), seed1, seed2);
 }
 pub fn math_randomseed(arg_L: ?*lua_State) callconv(.c) c_int {
     var L = arg_L;
@@ -1516,7 +1516,7 @@ pub fn math_randomseed(arg_L: ?*lua_State) callconv(.c) c_int {
         _ = &n1;
         var n2: lua_Integer = luaL_optinteger(L, @as(c_int, 2), @as(lua_Integer, @bitCast(@as(c_longlong, @as(c_int, 0)))));
         _ = &n2;
-        setseed(L, @as([*c]c_ulong, @ptrCast(@alignCast(&state.*.s[@as(usize, @intCast(0))]))), @as(lua_Unsigned, @bitCast(n1)), @as(lua_Unsigned, @bitCast(n2)));
+        setseed(L, @as([*c]usize, @ptrCast(@alignCast(&state.*.s[@as(usize, @intCast(0))]))), @as(lua_Unsigned, @bitCast(n1)), @as(lua_Unsigned, @bitCast(n2)));
     }
     return 2;
 }

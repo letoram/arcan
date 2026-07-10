@@ -192,6 +192,8 @@ extern fn angle_quat(q: c_quat) c_vector;
 
 // setjmp
 extern fn setjmp(env: *anyopaque) c_int;
+// windows: use the substrate's asm setjmp (libc's is SEH/2-arg). (windows port)
+extern fn arcan_setjmp(env: *anyopaque) c_int;
 
 // C stdlib
 extern fn strdup(s: [*c]const u8) [*c]u8;
@@ -292,7 +294,7 @@ fn fsrv_shm_resized(fsrv: *arcan_frameserver) i8 {
 // TRAMP_GUARD helpers (setjmp available from Zig)
 fn tramp_enter(fsrv: *arcan_frameserver) bool {
     var tramp: [JmpBuf.sizeof_jmp_buf]u8 align(16) = undefined;
-    if (setjmp(@ptrCast(&tramp)) != 0)
+    if ((if (@import("builtin").os.tag == .windows) arcan_setjmp else setjmp)(@ptrCast(&tramp)) != 0)
         return false;
     platform_fsrv_enter(fsrv, @ptrCast(&tramp));
     return true;
@@ -301,7 +303,7 @@ fn tramp_enter(fsrv: *arcan_frameserver) bool {
 fn tramp_set_limb_ignored(fsrv: *arcan_frameserver, vr: [*]u8, ind: usize, val: bool, ok: *bool) void {
     ok.* = true;
     var tramp: [JmpBuf.sizeof_jmp_buf]u8 align(16) = undefined;
-    if (setjmp(@ptrCast(&tramp)) != 0) {
+    if ((if (@import("builtin").os.tag == .windows) arcan_setjmp else setjmp)(@ptrCast(&tramp)) != 0) {
         ok.* = false;
         return;
     }
@@ -312,7 +314,7 @@ fn tramp_set_limb_ignored(fsrv: *arcan_frameserver, vr: [*]u8, ind: usize, val: 
 
 fn tramp_copy_meta(fsrv: *arcan_frameserver, vr: [*]u8, dst: [*]u8) bool {
     var tramp: [JmpBuf.sizeof_jmp_buf]u8 align(16) = undefined;
-    if (setjmp(@ptrCast(&tramp)) != 0)
+    if ((if (@import("builtin").os.tag == .windows) arcan_setjmp else setjmp)(@ptrCast(&tramp)) != 0)
         return false;
     platform_fsrv_enter(fsrv, @ptrCast(&tramp));
     @memcpy(dst[0..ShmifVr.sizeof_vr_meta], ShmifVr.getMetaPtr(vr)[0..ShmifVr.sizeof_vr_meta]);

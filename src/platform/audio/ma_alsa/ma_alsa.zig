@@ -134,8 +134,8 @@ fn ma_zero_memory_default(p: ?*anyopaque, sz: usize) callconv(.c) void {
     if (p) |ptr| @memset(@as([*]u8, @ptrCast(ptr))[0..sz], 0);
 }
 
-pub const ma_snd_pcm_uframes_t = c_ulong;
-pub const ma_snd_pcm_sframes_t = c_long;
+pub const ma_snd_pcm_uframes_t = if (@import("builtin").os.tag == .windows) usize else c_ulong;
+pub const ma_snd_pcm_sframes_t = if (@import("builtin").os.tag == .windows) isize else c_long;
 pub const ma_snd_pcm_stream_t = c_int;
 pub const ma_snd_pcm_format_t = c_int;
 pub const ma_snd_pcm_access_t = c_int;
@@ -1296,7 +1296,7 @@ pub fn ma_device_stop__alsa(arg_pDevice: [*c]ma_device) callconv(.c) ma_result {
         } else {
             _ = ma_log_postf(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_DEBUG)), @as([*:0]const u8, "[ALSA] Preparing capture device successful.\n"));
         }
-        resultPoll = poll(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsCapture))), @as(nfds_t, @bitCast(@as(isize, @as(c_int, 1)))), @as(c_int, 0));
+        resultPoll = poll(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsCapture))), @as(nfds_t, 1), @as(c_int, 0));
         if (resultPoll > 0) {
             var t: ma_uint64 = undefined;
             resultRead = @as(c_int, @bitCast(@as(c_int, @truncate(read(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsCapture)))[@as(c_uint, @intCast(@as(c_int, 0)))].fd, @as(?*anyopaque, @ptrCast(&t)), @sizeOf(ma_uint64))))));
@@ -1315,7 +1315,7 @@ pub fn ma_device_stop__alsa(arg_pDevice: [*c]ma_device) callconv(.c) ma_result {
         } else {
             _ = ma_log_postf(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_DEBUG)), @as([*:0]const u8, "[ALSA] Preparing playback device successful.\n"));
         }
-        resultPoll = poll(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsPlayback))), @as(nfds_t, @bitCast(@as(isize, @as(c_int, 1)))), @as(c_int, 0));
+        resultPoll = poll(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsPlayback))), @as(nfds_t, 1), @as(c_int, 0));
         if (resultPoll > 0) {
             var t: ma_uint64 = undefined;
             resultRead = @as(c_int, @bitCast(@as(c_int, @truncate(read(@as([*c]struct_pollfd, @ptrCast(@alignCast(pDevice.*.unnamed_0.alsa.pPollDescriptorsPlayback)))[@as(c_uint, @intCast(@as(c_int, 0)))].fd, @as(?*anyopaque, @ptrCast(&t)), @sizeOf(ma_uint64))))));
@@ -1340,7 +1340,7 @@ pub fn ma_device_wait__alsa(arg_pDevice: [*c]ma_device, arg_pPCM: ?*ma_snd_pcm_t
     while (true) {
         var revents: c_ushort = undefined;
         var resultALSA: c_int = undefined;
-        const resultPoll: c_int = poll(pPollDescriptors, @as(nfds_t, @bitCast(@as(isize, pollDescriptorCount))), -@as(c_int, 1));
+        const resultPoll: c_int = poll(pPollDescriptors, @as(nfds_t, @intCast(pollDescriptorCount)), -@as(c_int, 1));
         if (resultPoll < 0) {
             _ = ma_log_post(ma_device_get_log(pDevice), @as(ma_uint32, @bitCast(MA_LOG_LEVEL_WARNING)), "[ALSA] poll() failed.\n");
             continue;
