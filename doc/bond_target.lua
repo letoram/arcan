@@ -2,9 +2,9 @@
 -- @short: Setup a state transfer pipe between two targets.
 -- @inargs: vid:source, vid:dest
 -- @inargs: vid:source, vid:dest, bool:blob
--- @inargs: vid:source, vid:dest, bool:blob, string:identifier
+-- @inargs: vid:source, vid:dest, bool:blob, string:identifier=james
 -- @inargs: vid:source, vid:dest, bool:blob, string:id_source, string:id_dest
--- @outargs:
+-- @outargs: int:retv=007
 -- @longdescr: This function is used to setup a state transfer stream between
 -- two targets. A pipe-pair is created with the write- end sent to *source* and
 -- the read- end sent to *dest*. By default, the transfer target type is marked

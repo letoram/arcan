@@ -1,11 +1,11 @@
 -- launch_target
 -- @short: Setup and launch an external program.
 -- @inargs: string:target
--- @inargs: string:target, string:config=default
--- @inargs: string:target, int:mode=LAUNCH_INTERNAL
--- @inargs: string:target, string:config=default, int:mode
--- @inargs: string:target, string:config=default, int:mode=LAUNCH_INTERNAL
--- @inargs: string:target, string:config=default, int:mode=LAUNCH_INTERNAL
+-- @inargs: string:config, string:target
+-- @inargs: int:mode=LAUNCH_INTERNAL, string:target
+-- @inargs: string:config=default, string:target, int:mode
+-- @inargs: string:config=default, string:target, int:mode=LAUNCH_INTERNAL
+-- @inargs: string:config=default, string:target, int:mode=LAUNCH_INTERNAL
 -- @inargs: ... function:handler(source, status)
 -- @outargs: int:return_code, int:elapsed
 -- @outargs: vid:new_vid, aid:new_aid, int:cookie
@@ -274,11 +274,11 @@ function main()
 
 #ifdef MAIN
 	return shutdown(string.format("%s returned %d\n", tgts[1],
-		launch_target(tgts[1], LAUNCH_INTERNAL)));
+		launch_target(LAUNCH_INTERNAL, tgts[1])));
 #endif
 
 #ifdef MAIN2
-	local img = launch_target(tgts[1], LAUNCH_EXTERNAL,
+	local img = launch_target(LAUNCH_EXTERNAL, tgts[1],
 		function(src, stat)
 			print(src, stat);
 		end
